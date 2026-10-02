@@ -79,17 +79,15 @@ function StageApp() {
       } catch (err) {}
     };
     window.addEventListener('beforeunload', notifyClose);
-    window.addEventListener('pagehide', notifyClose);
 
     const heartbeat = setInterval(() => {
       try {
         channel.postMessage({ type: 'STAGE_HEARTBEAT' });
       } catch (err) {}
-    }, 1500);
+    }, 2000);
 
     return () => {
       window.removeEventListener('beforeunload', notifyClose);
-      window.removeEventListener('pagehide', notifyClose);
       clearInterval(heartbeat);
     };
   }, []);
@@ -269,7 +267,7 @@ function StageApp() {
     };
 
     return () => {
-      channel.postMessage({ type: 'STAGE_CLOSED' });
+      channel.close();
     };
   }, []);
 

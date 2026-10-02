@@ -32,6 +32,10 @@ export class SecondScreenController {
         this.startMonitoring();
         this.onStageConnected?.();
       } else if (msg.type === 'STAGE_CLOSED') {
+        // If window reference exists and is still open, ignore spurious close event
+        if (this.stageWindow && !this.stageWindow.closed) {
+          return;
+        }
         this.handleDisconnect('Stage window was closed');
       } else if (msg.type === 'STAGE_HEARTBEAT') {
         this.lastHeartbeat = Date.now();
@@ -55,16 +59,19 @@ export class SecondScreenController {
     if (this.monitorInterval) clearInterval(this.monitorInterval);
     this.lastHeartbeat = Date.now();
     this.monitorInterval = setInterval(() => {
-      // 1. Direct window reference check
-      if (this.stageWindow && this.stageWindow.closed) {
-        this.handleDisconnect('Stage window was closed');
+      // 1. Direct window reference check: 100% accurate, immune to background throttling
+      if (this.stageWindow) {
+        if (this.stageWindow.closed) {
+          this.handleDisconnect('Stage window was closed');
+        }
         return;
       }
-      // 2. Heartbeat timeout check (4.5s)
-      if (this.isConnected && this.lastHeartbeat > 0 && Date.now() - this.lastHeartbeat > 4500) {
+
+      // 2. Generous heartbeat fallback for manually navigated windows (45s to avoid background throttling false positives)
+      if (this.isConnected && this.lastHeartbeat > 0 && Date.now() - this.lastHeartbeat > 45000) {
         this.handleDisconnect('Stage window timed out');
       }
-    }, 300);
+    }, 400);
   }
 
   handleDisconnect(reason = 'Disconnected') {
