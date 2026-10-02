@@ -53,8 +53,9 @@ export function App() {
     try {
       const saved = loadShowStateFromCookie();
       if (saved) {
-        if (Array.isArray(saved.queue) && saved.queue.length > 0) {
-          queue.value = saved.queue;
+        if (Array.isArray(saved.queue)) {
+          const cleanedQueue = saved.queue.filter(item => !String(item.id || '').startsWith('demo-'));
+          queue.value = cleanedQueue;
         }
         if (saved.autoApplause !== undefined) {
           autoApplause.value = Boolean(saved.autoApplause);

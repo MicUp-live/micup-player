@@ -13,35 +13,7 @@ export const volume = signal(1.0);
 export const audioLevel = signal(0);
 
 // Playout Queue & Singer Rotation
-export const queue = signal([
-  {
-    id: 'demo-1',
-    singerName: 'Marcus Vance',
-    title: 'Don\'t Stop Believin\'',
-    artist: 'Journey',
-    semitones: 0,
-    requestedAt: '8:45 PM',
-    status: 'up_next'
-  },
-  {
-    id: 'demo-2',
-    singerName: 'Elena Rostova',
-    title: 'Rolling in the Deep',
-    artist: 'Adele',
-    semitones: -1,
-    requestedAt: '8:50 PM',
-    status: 'queued'
-  },
-  {
-    id: 'demo-3',
-    singerName: 'David K.',
-    title: 'Bohemian Rhapsody',
-    artist: 'Queen',
-    semitones: 1,
-    requestedAt: '8:56 PM',
-    status: 'queued'
-  }
-]);
+export const queue = signal([]);
 
 export const activeTab = signal('queue'); // 'queue' | 'library' | 'pads'
 export const isSecondScreenConnected = signal(false);
