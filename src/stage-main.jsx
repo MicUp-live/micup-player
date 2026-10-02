@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'preact/hooks';
 import { CDGRenderer, CDG_WIDTH, CDG_HEIGHT } from './engine/cdg/cdg-renderer.js';
 import { STAGE_CHANNEL_NAME } from './engine/display/second-screen.js';
 import { QRCodeView } from './components/QRCodeView.jsx';
+import { parseYouTubeMessage } from './engine/youtube/youtube-player-controller.js';
 
 function StageApp() {
   const [state, setState] = useState({
@@ -28,6 +29,12 @@ function StageApp() {
   const youtubeRef = useRef(null);
   const cdgRendererRef = useRef(null);
   const lastPlayingStateRef = useRef(null);
+  const channelRef = useRef(null);
+
+  if (!channelRef.current) {
+    channelRef.current = new BroadcastChannel(STAGE_CHANNEL_NAME);
+  }
+  const channel = channelRef.current;
 
   // Unlock audio playback on first user gesture to satisfy browser autoplay policies
   const unlockAudio = () => {
@@ -64,6 +71,67 @@ function StageApp() {
     };
   }, [state.stageAudioMuted, hasInteracted]);
 
+  // Alert host immediately if this stage window is closed or refreshed, and send heartbeats
+  useEffect(() => {
+    const notifyClose = () => {
+      try {
+        channel.postMessage({ type: 'STAGE_CLOSED' });
+      } catch (err) {}
+    };
+    window.addEventListener('beforeunload', notifyClose);
+    window.addEventListener('pagehide', notifyClose);
+
+    const heartbeat = setInterval(() => {
+      try {
+        channel.postMessage({ type: 'STAGE_HEARTBEAT' });
+      } catch (err) {}
+    }, 1500);
+
+    return () => {
+      window.removeEventListener('beforeunload', notifyClose);
+      window.removeEventListener('pagehide', notifyClose);
+      clearInterval(heartbeat);
+    };
+  }, []);
+
+  // Listen for YouTube iframe player events and forward playback state to host
+  useEffect(() => {
+    const handleYouTubeMsg = (event) => {
+      const parsed = parseYouTubeMessage(event.data);
+      if (!parsed) return;
+
+      if (parsed.type === 'stateChange') {
+        if (parsed.state === 'playing') {
+          channel.postMessage({ type: 'STAGE_PLAY_STATE', payload: { isPlaying: true } });
+          setState(prev => ({ ...prev, isPlaying: true }));
+        } else if (parsed.state === 'paused') {
+          channel.postMessage({ type: 'STAGE_PLAY_STATE', payload: { isPlaying: false } });
+          setState(prev => ({ ...prev, isPlaying: false }));
+        } else if (parsed.state === 'ended') {
+          channel.postMessage({ type: 'STAGE_PLAYBACK_ENDED' });
+        }
+      } else if (parsed.type === 'timeUpdate') {
+        channel.postMessage({
+          type: 'STAGE_TIME_UPDATE',
+          payload: {
+            currentTime: parsed.currentTime,
+            duration: parsed.duration,
+            isPlaying: parsed.playerState === 1
+          }
+        });
+        setState(prev => ({
+          ...prev,
+          currentTime: parsed.currentTime,
+          duration: parsed.duration || prev.duration,
+          isPlaying: parsed.playerState === 1
+        }));
+      }
+    };
+
+    window.addEventListener('message', handleYouTubeMsg);
+    return () => window.removeEventListener('message', handleYouTubeMsg);
+  }, []);
+
   // Monitor fullscreen change
   useEffect(() => {
     const handleFsChange = () => {
@@ -83,8 +151,6 @@ function StageApp() {
   };
 
   useEffect(() => {
-    const channel = new BroadcastChannel(STAGE_CHANNEL_NAME);
-
     // Announce readiness to host
     channel.postMessage({ type: 'STAGE_READY' });
 
@@ -126,6 +192,44 @@ function StageApp() {
         if (cdgRendererRef.current) {
           cdgRendererRef.current.loadData(payload);
         }
+      } else if (type === 'STAGE_PLAY') {
+        if (youtubeRef.current?.contentWindow) {
+          youtubeRef.current.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: 'playVideo',
+            args: []
+          }), '*');
+        }
+        if (videoRef.current) {
+          videoRef.current.play().catch(() => {});
+        }
+        setState(prev => ({ ...prev, isPlaying: true }));
+      } else if (type === 'STAGE_PAUSE') {
+        if (youtubeRef.current?.contentWindow) {
+          youtubeRef.current.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: 'pauseVideo',
+            args: []
+          }), '*');
+        }
+        if (videoRef.current) {
+          videoRef.current.pause();
+        }
+        setState(prev => ({ ...prev, isPlaying: false }));
+      } else if (type === 'STAGE_SEEK') {
+        if (youtubeRef.current?.contentWindow) {
+          youtubeRef.current.contentWindow.postMessage(JSON.stringify({
+            event: 'command',
+            func: 'seekTo',
+            args: [payload.time, true]
+          }), '*');
+        }
+        if (videoRef.current) {
+          videoRef.current.currentTime = payload.time;
+        }
+        if (cdgRendererRef.current) {
+          cdgRendererRef.current.syncToTime(payload.time);
+        }
       } else if (type === 'TIME_SYNC') {
         if (cdgRendererRef.current) {
           cdgRendererRef.current.syncToTime(payload.time);
@@ -164,7 +268,9 @@ function StageApp() {
       }
     };
 
-    return () => channel.close();
+    return () => {
+      channel.postMessage({ type: 'STAGE_CLOSED' });
+    };
   }, []);
 
   const isPartyActive = Boolean(state.isPartyActive && state.partyRoomCode);

@@ -12,15 +12,72 @@ export class SecondScreenController {
     this.channel = new BroadcastChannel(STAGE_CHANNEL_NAME);
     this.stageWindow = null;
     this.isConnected = false;
+    this.monitorInterval = null;
+    this.lastHeartbeat = 0;
 
-    // Listen for handshake from stage window
+    this.onStageConnected = null;
+    this.onStageDisconnected = null;
+    this.onStageTimeUpdate = null;
+    this.onStagePlayState = null;
+    this.onStagePlaybackEnded = null;
+
+    // Listen for handshake, heartbeats, and events from stage window
     this.channel.onmessage = (e) => {
       const msg = e.data;
+      if (!msg || typeof msg !== 'object') return;
+
       if (msg.type === 'STAGE_READY') {
         this.isConnected = true;
+        this.lastHeartbeat = Date.now();
+        this.startMonitoring();
         this.onStageConnected?.();
+      } else if (msg.type === 'STAGE_CLOSED') {
+        this.handleDisconnect('Stage window was closed');
+      } else if (msg.type === 'STAGE_HEARTBEAT') {
+        this.lastHeartbeat = Date.now();
+      } else if (msg.type === 'STAGE_TIME_UPDATE') {
+        this.lastHeartbeat = Date.now();
+        this.onStageTimeUpdate?.(msg.payload);
+      } else if (msg.type === 'STAGE_PLAY_STATE') {
+        this.lastHeartbeat = Date.now();
+        this.onStagePlayState?.(msg.payload?.isPlaying);
+      } else if (msg.type === 'STAGE_PLAYBACK_ENDED') {
+        this.lastHeartbeat = Date.now();
+        this.onStagePlaybackEnded?.();
       }
     };
+  }
+
+  /**
+   * Monitor window state and heartbeat to alert host immediately upon close
+   */
+  startMonitoring() {
+    if (this.monitorInterval) clearInterval(this.monitorInterval);
+    this.lastHeartbeat = Date.now();
+    this.monitorInterval = setInterval(() => {
+      // 1. Direct window reference check
+      if (this.stageWindow && this.stageWindow.closed) {
+        this.handleDisconnect('Stage window was closed');
+        return;
+      }
+      // 2. Heartbeat timeout check (4.5s)
+      if (this.isConnected && this.lastHeartbeat > 0 && Date.now() - this.lastHeartbeat > 4500) {
+        this.handleDisconnect('Stage window timed out');
+      }
+    }, 300);
+  }
+
+  handleDisconnect(reason = 'Disconnected') {
+    if (!this.isConnected) return;
+    this.isConnected = false;
+    if (this.monitorInterval) {
+      clearInterval(this.monitorInterval);
+      this.monitorInterval = null;
+    }
+    if (this.stageWindow?.closed) {
+      this.stageWindow = null;
+    }
+    this.onStageDisconnected?.(reason);
   }
 
   /**
@@ -53,6 +110,28 @@ export class SecondScreenController {
       : '/stage.html';
 
     this.stageWindow = window.open(stageUrl, 'MicUpStageWindow', windowFeatures);
+    this.startMonitoring();
+  }
+
+  /**
+   * Send Play command to Second Screen
+   */
+  sendPlay() {
+    this.channel.postMessage({ type: 'STAGE_PLAY' });
+  }
+
+  /**
+   * Send Pause command to Second Screen
+   */
+  sendPause() {
+    this.channel.postMessage({ type: 'STAGE_PAUSE' });
+  }
+
+  /**
+   * Send Seek command to Second Screen
+   */
+  sendSeek(time) {
+    this.channel.postMessage({ type: 'STAGE_SEEK', payload: { time } });
   }
 
   /**

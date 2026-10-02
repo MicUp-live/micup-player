@@ -36,6 +36,7 @@ export function App() {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isPadsOpen, setIsPadsOpen] = useState(false);
   const [isPartyModalOpen, setIsPartyModalOpen] = useState(false);
+  const [stageAlert, setStageAlert] = useState(null);
 
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
@@ -89,10 +90,11 @@ export function App() {
     partyRoomCode.value
   ]);
 
-  // Handshake listener for Second Screen window
+  // Handshake and disconnect listeners for Second Screen window
   useEffect(() => {
     secondScreen.onStageConnected = () => {
       isSecondScreenConnected.value = true;
+      setStageAlert(null);
       const current = currentTrack.value;
       secondScreen.sendState({
         mediaType: current ? current.type : 'idle',
@@ -103,7 +105,7 @@ export function App() {
         videoUrl: current?.videoUrl || null,
         semitones: semitones.value,
         isPlaying: isPlaying.value,
-        stageAudioMuted: audioOutputTarget.value === 'host',
+        stageAudioMuted: false,
         upNextSinger: current ? (queue.value[1] || null) : (queue.value[0] || null),
         isPartyActive: isPartyActive.value,
         partyRoomCode: partyRoomCode.value,
@@ -118,16 +120,37 @@ export function App() {
 
       secondScreen.sendPartyState(isPartyActive.value, partyRoomCode.value, partyBroker.value, partySessionId.value);
     };
-  }, []);
 
-  // Sync audio mute routing when user switches audio target
-  useEffect(() => {
-    if (isSecondScreenConnected.value) {
-      secondScreen.sendState({
-        stageAudioMuted: audioOutputTarget.value === 'host'
+    // Alert host immediately if second screen is closed or disconnected
+    secondScreen.onStageDisconnected = () => {
+      isSecondScreenConnected.value = false;
+      setStageAlert({
+        type: 'warning',
+        message: 'The TV stage screen window was closed. Playback has returned to this screen.',
+        timestamp: Date.now()
       });
-    }
-  }, [audioOutputTarget.value, isSecondScreenConnected.value]);
+    };
+
+    secondScreen.onStageTimeUpdate = ({ currentTime: cur, duration: dur, isPlaying: playing }) => {
+      if (isSecondScreenConnected.value) {
+        currentTime.value = cur;
+        if (dur > 0) duration.value = dur;
+        if (typeof playing === 'boolean') isPlaying.value = playing;
+      }
+    };
+
+    secondScreen.onStagePlayState = (playing) => {
+      if (isSecondScreenConnected.value) {
+        isPlaying.value = playing;
+      }
+    };
+
+    secondScreen.onStagePlaybackEnded = () => {
+      if (isSecondScreenConnected.value) {
+        handleNextSong();
+      }
+    };
+  }, []);
 
   // Initialize CDG Renderer on canvas mount
   useEffect(() => {
@@ -346,6 +369,17 @@ export function App() {
    * Play / Pause toggle
    */
   const handlePlayPause = async () => {
+    if (isSecondScreenConnected.value) {
+      const nextPlaying = !isPlaying.value;
+      isPlaying.value = nextPlaying;
+      if (nextPlaying) {
+        secondScreen.sendPlay();
+      } else {
+        secondScreen.sendPause();
+      }
+      return;
+    }
+
     if (currentTrack.value?.type === 'youtube') {
       if (isPlaying.value) {
         youtubeControllerRef.current?.pause();
@@ -377,9 +411,14 @@ export function App() {
    * Seek to timestamp
    */
   const handleSeek = (newTime) => {
+    currentTime.value = newTime;
+    if (isSecondScreenConnected.value) {
+      secondScreen.sendSeek(newTime);
+      return;
+    }
+
     if (currentTrack.value?.type === 'youtube') {
       youtubeControllerRef.current?.seekTo(newTime);
-      currentTime.value = newTime;
       secondScreen.sendTimeSync(newTime, isPlaying.value, true);
       return;
     }
@@ -388,7 +427,6 @@ export function App() {
     if (!mediaEl) return;
 
     mediaEl.currentTime = newTime;
-    currentTime.value = newTime;
 
     if (cdgRendererRef.current && currentTrack.value?.type === 'cdg') {
       cdgRendererRef.current.seek(newTime);
@@ -534,6 +572,69 @@ export function App() {
         onOpenPads={() => setIsPadsOpen(!isPadsOpen)}
         onOpenParty={() => setIsPartyModalOpen(true)}
       />
+
+      {/* Second Screen Disconnect Warning Banner */}
+      {stageAlert && (
+        <div style={{
+          position: 'fixed',
+          top: '72px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 10000,
+          background: 'linear-gradient(135deg, rgba(220, 38, 38, 0.96), rgba(185, 28, 28, 0.96))',
+          border: '1px solid rgba(255, 255, 255, 0.3)',
+          borderRadius: '12px',
+          padding: '12px 20px',
+          color: '#fff',
+          boxShadow: '0 12px 40px rgba(0, 0, 0, 0.7), 0 0 24px rgba(239, 68, 68, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+          backdropFilter: 'blur(12px)',
+          maxWidth: '90vw'
+        }}>
+          <span style={{ fontSize: '22px' }}>⚠️</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <strong style={{ fontSize: '13px', letterSpacing: '0.02em' }}>Stage Screen Closed!</strong>
+            <span style={{ fontSize: '12px', opacity: 0.95 }}>{stageAlert.message}</span>
+          </div>
+          <button
+            onClick={() => {
+              secondScreen.openStageWindow();
+              setStageAlert(null);
+            }}
+            style={{
+              background: '#fff',
+              color: '#b91c1c',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '7px 14px',
+              fontSize: '12px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)'
+            }}
+          >
+            Reopen Stage Screen
+          </button>
+          <button
+            onClick={() => setStageAlert(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#fff',
+              fontSize: '18px',
+              cursor: 'pointer',
+              padding: '2px 8px',
+              opacity: 0.75
+            }}
+            title="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>

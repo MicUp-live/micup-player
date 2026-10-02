@@ -80,50 +80,112 @@ export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile }) {
         boxShadow: 'inset 0 0 40px rgba(0, 0, 0, 0.8)'
       }}
     >
-      {/* Audio Routing Indicator Badge */}
-      {isSecondScreenConnected.value && (isYouTube || isVideo) && (
+      {/* Active Playback on TV Second Screen (Main screen plays NOTHING) */}
+      {isSecondScreenConnected.value && (
         <div style={{
-          position: 'absolute',
-          top: '12px',
-          right: '12px',
-          zIndex: 20,
-          background: 'rgba(9, 10, 15, 0.88)',
-          border: shouldMuteHost ? '1px solid rgba(0, 240, 255, 0.4)' : '1px solid rgba(255, 42, 95, 0.4)',
-          borderRadius: '8px',
-          padding: '5px 12px',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          gap: '10px',
-          backdropFilter: 'blur(8px)',
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)'
+          justifyContent: 'center',
+          padding: '32px 24px',
+          textAlign: 'center',
+          width: '100%',
+          height: '100%',
+          zIndex: 10
         }}>
-          <span style={{ fontSize: '12px', color: shouldMuteHost ? 'var(--neon-cyan)' : 'var(--neon-coral)', fontWeight: 700 }}>
-            {shouldMuteHost ? '📺 Audio: TV Stage Screen (Host Muted)' : '💻 Audio: Host Laptop (TV Muted)'}
-          </span>
-          <button
-            onClick={() => { audioOutputTarget.value = shouldMuteHost ? 'host' : 'stage'; }}
-            style={{
-              background: 'rgba(255, 255, 255, 0.12)',
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              borderRadius: '4px',
-              color: '#fff',
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            background: 'rgba(0, 240, 255, 0.12)',
+            border: '1px solid rgba(0, 240, 255, 0.45)',
+            borderRadius: '100px',
+            padding: '6px 16px',
+            marginBottom: '16px'
+          }}>
+            <span style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: 'var(--neon-cyan)',
+              boxShadow: '0 0 10px var(--neon-cyan)'
+            }} />
+            <span style={{
               fontSize: '11px',
-              padding: '2px 8px',
-              cursor: 'pointer'
-            }}
-          >
-            {shouldMuteHost ? 'Switch to Laptop' : 'Switch to TV'}
-          </button>
+              fontWeight: 800,
+              color: 'var(--neon-cyan)',
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase'
+            }}>
+              TV Stage Screen Active
+            </span>
+          </div>
+
+          {track ? (
+            <div style={{ maxWidth: '520px' }}>
+              <div style={{
+                fontSize: '22px',
+                fontWeight: 800,
+                color: '#fff',
+                marginBottom: '6px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}>
+                {track.title}
+              </div>
+              <div style={{
+                fontSize: '15px',
+                color: 'var(--text-secondary)',
+                fontWeight: 600,
+                marginBottom: '14px'
+              }}>
+                {track.artist}
+              </div>
+              {track.singerName && (
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: 'rgba(255, 42, 95, 0.15)',
+                  border: '1px solid rgba(255, 42, 95, 0.4)',
+                  borderRadius: '8px',
+                  padding: '4px 12px',
+                  color: 'var(--neon-coral)',
+                  fontSize: '13px',
+                  fontWeight: 700
+                }}>
+                  <span>🎤 Performer:</span>
+                  <span style={{ color: '#fff' }}>{track.singerName}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ color: 'var(--text-muted)', fontSize: '14px' }}>
+              Second screen is connected and ready for the show.
+            </div>
+          )}
+
+          <div style={{
+            marginTop: '20px',
+            fontSize: '12px',
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            <span>🔇 Main screen is silent. Playback is streaming exclusively on the TV.</span>
+          </div>
         </div>
       )}
 
-      {/* CD+G Canvas Display */}
+      {/* CD+G Canvas Display (Only when NOT on second screen) */}
       <canvas
         ref={canvasRef}
         width={CDG_WIDTH}
         height={CDG_HEIGHT}
         style={{
-          display: isCDG ? 'block' : 'none',
+          display: isCDG && !isSecondScreenConnected.value ? 'block' : 'none',
           maxWidth: 'calc(100% - 24px)',
           maxHeight: 'calc(100% - 24px)',
           aspectRatio: '300/216',
@@ -133,23 +195,24 @@ export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile }) {
         }}
       />
 
-      {/* HTML5 Video Element */}
-      <video
-        ref={videoRef}
-        muted={shouldMuteHost}
-        style={{
-          display: isVideo ? 'block' : 'none',
-          maxWidth: '100%',
-          maxHeight: '100%',
-          aspectRatio: '16/9'
-        }}
-      />
+      {/* HTML5 Video Element (Only when NOT on second screen) */}
+      {!isSecondScreenConnected.value && (
+        <video
+          ref={videoRef}
+          style={{
+            display: isVideo ? 'block' : 'none',
+            maxWidth: '100%',
+            maxHeight: '100%',
+            aspectRatio: '16/9'
+          }}
+        />
+      )}
 
-      {/* YouTube Video Embed */}
-      {isYouTube && (
+      {/* YouTube Video Embed (Only when NOT on second screen) */}
+      {isYouTube && !isSecondScreenConnected.value && (
         <iframe
           ref={youtubeRef}
-          src={`https://www.youtube.com/embed/${track.videoId}?autoplay=1&enablejsapi=1${shouldMuteHost ? '&mute=1' : ''}&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}`}
+          src={`https://www.youtube.com/embed/${track.videoId}?autoplay=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}`}
           title={track.title}
           allow="autoplay; encrypted-media"
           allowFullScreen
@@ -166,7 +229,7 @@ export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile }) {
       )}
 
       {/* Idle / Drag & Drop Dropzone */}
-      {isIdle && (
+      {isIdle && !isSecondScreenConnected.value && (
         <div style={{
           display: 'flex',
           flexDirection: 'column',
