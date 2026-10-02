@@ -1,5 +1,17 @@
 import { queue, upNextSinger } from '../state/player-state.js';
 
+function isYouTubeItem(item) {
+  if (!item) return false;
+  return Boolean(
+    item.type === 'youtube' ||
+    item.videoId ||
+    item.youtubeId ||
+    item.source === 'youtube' ||
+    item.trackMatch?.type === 'youtube' ||
+    item.trackMatch?.videoId
+  );
+}
+
 export function QueuePanel({ onStartSong, onAddFromLibrary }) {
   const upNext = upNextSinger.value;
   const queueList = queue.value;
@@ -98,7 +110,7 @@ export function QueuePanel({ onStartSong, onAddFromLibrary }) {
           </div>
           <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             <span>"{upNext.title}"</span>
-            {(upNext.type === 'youtube' || upNext.videoId) && (
+            {isYouTubeItem(upNext) && (
               <span className="badge badge-coral" style={{ fontSize: '9px', padding: '1px 5px' }}>
                 YOUTUBE
               </span>
@@ -188,7 +200,7 @@ export function QueuePanel({ onStartSong, onAddFromLibrary }) {
                   )}
                 </div>
                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  {(item.type === 'youtube' || item.videoId) && (
+                  {isYouTubeItem(item) && (
                     <span style={{ color: 'var(--neon-coral)', fontWeight: 800, fontSize: '9px' }}>[YT]</span>
                   )}
                   <span>{item.title} — {item.artist}</span>

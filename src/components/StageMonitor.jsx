@@ -3,7 +3,7 @@ import { currentTrack, isPlaying, semitones } from '../state/player-state.js';
 import { CDG_WIDTH, CDG_HEIGHT } from '../engine/cdg/cdg-renderer.js';
 import { audioEngine } from '../engine/audio/audio-engine.js';
 
-export function StageMonitor({ canvasRef, videoRef, onDropFile }) {
+export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [vuLevel, setVuLevel] = useState(0);
   const animFrameRef = useRef(null);
@@ -95,7 +95,8 @@ export function StageMonitor({ canvasRef, videoRef, onDropFile }) {
       {/* YouTube Video Embed */}
       {isYouTube && (
         <iframe
-          src={`https://www.youtube-nocookie.com/embed/${track.videoId}?autoplay=1&enablejsapi=1`}
+          ref={youtubeRef}
+          src={`https://www.youtube-nocookie.com/embed/${track.videoId}?autoplay=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}`}
           title={track.title}
           allow="autoplay; encrypted-media"
           allowFullScreen

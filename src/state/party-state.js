@@ -36,7 +36,9 @@ export async function startPartyHost(preferredCode = null, customTransport = nul
         semitones: song.preferredKey || 0,
         requestedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         status: 'queued',
-        source: song.source || 'local',
+        source: song.source || (song.youtubeId ? 'youtube' : 'local'),
+        type: song.source === 'youtube' || song.youtubeId ? 'youtube' : 'local',
+        videoId: song.youtubeId || null,
         youtubeId: song.youtubeId || null
       };
 

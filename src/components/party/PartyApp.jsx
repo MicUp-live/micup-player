@@ -371,9 +371,9 @@ export function PartyApp() {
                           cursor: 'pointer'
                         }}
                       >
-                        {item.thumbnailUrl && (
+                        {(item.thumbnail || item.thumbnailUrl) && (
                           <img
-                            src={item.thumbnailUrl}
+                            src={item.thumbnail || item.thumbnailUrl}
                             alt=""
                             style={{ width: '60px', height: '45px', objectFit: 'cover', borderRadius: '6px' }}
                           />
@@ -383,7 +383,7 @@ export function PartyApp() {
                             {item.title}
                           </div>
                           <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                            {item.channelTitle || 'YouTube Karaoke'}
+                            {item.channel || item.channelTitle || 'YouTube Karaoke'}
                           </div>
                         </div>
                         {selectedSong?.id === item.id && (

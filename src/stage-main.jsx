@@ -23,6 +23,7 @@ function StageApp() {
   const [announcement, setAnnouncement] = useState(null);
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
+  const youtubeRef = useRef(null);
   const cdgRendererRef = useRef(null);
 
   useEffect(() => {
@@ -49,6 +50,21 @@ function StageApp() {
         }
         if (videoRef.current && Math.abs(videoRef.current.currentTime - payload.time) > 0.3) {
           videoRef.current.currentTime = payload.time;
+        }
+        if (youtubeRef.current?.contentWindow) {
+          if (payload.isPlaying) {
+            youtubeRef.current.contentWindow.postMessage(JSON.stringify({
+              event: 'command',
+              func: 'playVideo',
+              args: []
+            }), '*');
+          } else {
+            youtubeRef.current.contentWindow.postMessage(JSON.stringify({
+              event: 'command',
+              func: 'pauseVideo',
+              args: []
+            }), '*');
+          }
         }
       } else if (type === 'ANNOUNCEMENT') {
         setAnnouncement(payload.text);
@@ -341,7 +357,8 @@ function StageApp() {
           position: 'relative'
         }}>
           <iframe
-            src={`https://www.youtube-nocookie.com/embed/${state.videoId}?autoplay=1&enablejsapi=1&controls=0&rel=0`}
+            ref={youtubeRef}
+            src={`https://www.youtube-nocookie.com/embed/${state.videoId}?autoplay=1&enablejsapi=1&controls=0&rel=0&mute=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}`}
             title={state.title}
             allow="autoplay; encrypted-media"
             allowFullScreen

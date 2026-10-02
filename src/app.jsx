@@ -30,6 +30,7 @@ import { mediaLoader } from './engine/media/media-loader.js';
 import { libraryStore } from './engine/library/library-store.js';
 import { secondScreen } from './engine/display/second-screen.js';
 import { soundPads } from './engine/sfx/sound-pads.js';
+import { YouTubePlayerController } from './engine/youtube/youtube-player-controller.js';
 
 export function App() {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -40,6 +41,8 @@ export function App() {
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
   const audioRef = useRef(null);
+  const youtubeIframeRef = useRef(null);
+  const youtubeControllerRef = useRef(null);
   const cdgRendererRef = useRef(null);
 
   // Restore saved folder from IndexedDB on startup
@@ -54,21 +57,86 @@ export function App() {
     }
   }, [canvasRef.current]);
 
+  // Initialize YouTube Player Controller
+  useEffect(() => {
+    youtubeControllerRef.current = new YouTubePlayerController({
+      onStateChange: (state) => {
+        if (state === 'playing') {
+          isPlaying.value = true;
+        } else if (state === 'paused') {
+          isPlaying.value = false;
+        }
+      },
+      onTimeUpdate: (cur, dur) => {
+        if (currentTrack.value?.type === 'youtube') {
+          currentTime.value = cur;
+          if (dur > 0) duration.value = dur;
+          secondScreen.sendTimeSync(cur, isPlaying.value);
+        }
+      },
+      onEnded: () => {
+        if (currentTrack.value?.type === 'youtube') {
+          handleNextSong();
+        }
+      },
+      onError: (code, isRestricted) => {
+        if (isRestricted) {
+          alert('Embedding is restricted by YouTube for this video. Please select another karaoke version.');
+        }
+      }
+    });
+
+    return () => {
+      youtubeControllerRef.current?.destroy();
+    };
+  }, []);
+
+  // Bind YouTube iframe element
+  useEffect(() => {
+    if (currentTrack.value?.type === 'youtube' && youtubeIframeRef.current) {
+      youtubeControllerRef.current?.attachIframe(youtubeIframeRef.current);
+    }
+  }, [currentTrack.value, youtubeIframeRef.current]);
+
+  // Volume synchronization
+  useEffect(() => {
+    if (currentTrack.value?.type === 'youtube') {
+      youtubeControllerRef.current?.setVolume(volume.value);
+    }
+  }, [volume.value]);
+
   /**
    * Play a track (from File or Library item)
    */
   const playTrack = async (trackSource, singerName = '', targetSemitones = 0) => {
     try {
-      if (trackSource.type === 'youtube' || trackSource.videoId) {
+      const isYt = trackSource.type === 'youtube' ||
+        Boolean(trackSource.videoId) ||
+        Boolean(trackSource.youtubeId) ||
+        Boolean(trackSource.trackMatch?.videoId) ||
+        trackSource.trackMatch?.type === 'youtube';
+
+      if (isYt) {
+        const ytId = trackSource.videoId || trackSource.youtubeId || trackSource.trackMatch?.videoId;
+        if (audioRef.current) {
+          audioRef.current.pause();
+        }
+        if (videoRef.current) {
+          videoRef.current.pause();
+        }
+
         const loaded = {
           type: 'youtube',
-          videoId: trackSource.videoId,
-          title: trackSource.title,
+          videoId: ytId,
+          title: trackSource.title || 'YouTube Karaoke',
           artist: trackSource.channel || trackSource.artist || 'YouTube',
           singerName: singerName || (upNextSinger.value?.singerName || '')
         };
         currentTrack.value = loaded;
+        semitones.value = targetSemitones;
         isPlaying.value = true;
+        currentTime.value = 0;
+        duration.value = 0;
 
         secondScreen.sendState({
           mediaType: 'youtube',
@@ -162,13 +230,26 @@ export function App() {
    * Start song from Up Next in queue
    */
   const handleStartQueueItem = async (queueItem) => {
-    if (queueItem.type === 'youtube' || queueItem.videoId) {
-      await playTrack(queueItem, queueItem.singerName, queueItem.semitones);
+    const isYt = queueItem.type === 'youtube' ||
+      Boolean(queueItem.videoId) ||
+      Boolean(queueItem.youtubeId) ||
+      queueItem.source === 'youtube' ||
+      Boolean(queueItem.trackMatch?.videoId) ||
+      queueItem.trackMatch?.type === 'youtube';
+
+    if (isYt) {
+      const ytId = queueItem.videoId || queueItem.youtubeId || queueItem.trackMatch?.videoId;
+      await playTrack({
+        type: 'youtube',
+        videoId: ytId,
+        title: queueItem.title,
+        artist: queueItem.artist
+      }, queueItem.singerName, queueItem.semitones);
       return;
     }
 
     // Try to auto-match track from local library
-    const matched = libraryStore.matchRequest(queueItem.artist, queueItem.title);
+    const matched = queueItem.mediaItem || queueItem.trackMatch || libraryStore.matchRequest(queueItem.artist, queueItem.title);
     if (matched) {
       await playTrack(matched, queueItem.singerName, queueItem.semitones);
     } else {
@@ -181,6 +262,18 @@ export function App() {
    * Play / Pause toggle
    */
   const handlePlayPause = async () => {
+    if (currentTrack.value?.type === 'youtube') {
+      if (isPlaying.value) {
+        youtubeControllerRef.current?.pause();
+        isPlaying.value = false;
+      } else {
+        youtubeControllerRef.current?.play();
+        isPlaying.value = true;
+      }
+      secondScreen.sendTimeSync(currentTime.value, isPlaying.value);
+      return;
+    }
+
     await audioEngine.init();
     const mediaEl = currentTrack.value?.type === 'video' ? videoRef.current : audioRef.current;
     if (!mediaEl || !currentTrack.value) return;
@@ -200,6 +293,13 @@ export function App() {
    * Seek to timestamp
    */
   const handleSeek = (newTime) => {
+    if (currentTrack.value?.type === 'youtube') {
+      youtubeControllerRef.current?.seekTo(newTime);
+      currentTime.value = newTime;
+      secondScreen.sendTimeSync(newTime, isPlaying.value);
+      return;
+    }
+
     const mediaEl = currentTrack.value?.type === 'video' ? videoRef.current : audioRef.current;
     if (!mediaEl) return;
 
@@ -234,13 +334,18 @@ export function App() {
       cloudQueueClient.updateStatus(finishedSinger.id, 'completed');
     }
 
-    // Stop current
+    // Stop current track
+    if (currentTrack.value?.type === 'youtube') {
+      youtubeControllerRef.current?.stop();
+    }
     const mediaEl = currentTrack.value?.type === 'video' ? videoRef.current : audioRef.current;
     if (mediaEl) {
       mediaEl.pause();
     }
     isPlaying.value = false;
     currentTrack.value = null;
+    currentTime.value = 0;
+    duration.value = 0;
 
     // Pop finished singer from queue
     if (queue.value.length > 0) {
@@ -250,6 +355,10 @@ export function App() {
     // Reset Second Screen to Idle
     secondScreen.sendState({
       mediaType: 'idle',
+      title: null,
+      artist: null,
+      singerName: null,
+      isPlaying: false,
       upNextSinger: queue.value[0] || null,
       showCode: showCode.value
     });
@@ -365,6 +474,7 @@ export function App() {
           <StageMonitor
             canvasRef={canvasRef}
             videoRef={videoRef}
+            youtubeRef={youtubeIframeRef}
             onDropFile={(file) => playTrack({ file })}
           />
 
@@ -386,14 +496,19 @@ export function App() {
         onClose={() => setIsLibraryOpen(false)}
         onSelectTrack={(track) => playTrack(track)}
         onQueueTrack={(track) => {
+          const isYt = track.type === 'youtube' || Boolean(track.videoId);
           queue.value = [
             ...queue.value,
             {
               id: `q-${Date.now()}`,
               singerName: 'Host Selection',
               title: track.title,
-              artist: track.artist,
+              artist: track.artist || track.channel || 'Unknown Artist',
               semitones: 0,
+              type: isYt ? 'youtube' : 'local',
+              videoId: track.videoId || null,
+              youtubeId: track.videoId || null,
+              source: isYt ? 'youtube' : 'local',
               trackMatch: track
             }
           ];

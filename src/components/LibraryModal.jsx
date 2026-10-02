@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'preact/hooks';
 import { libraryStore } from '../engine/library/library-store.js';
-import { searchYouTubeKaraoke } from '../engine/youtube/youtube-helper.js';
+import {
+  searchYouTubeKaraoke,
+  extractYouTubeVideoId,
+  getYouTubeApiKey,
+  setYouTubeApiKey,
+  getCustomSearchEndpoint,
+  setCustomSearchEndpoint
+} from '../engine/youtube/youtube-helper.js';
 
 export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
   const [activeTab, setActiveTab] = useState('local'); // 'local' | 'youtube'
@@ -12,6 +19,10 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
   // YouTube search state
   const [ytResults, setYtResults] = useState([]);
   const [isYtSearching, setIsYtSearching] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState(getYouTubeApiKey());
+  const [endpointInput, setEndpointInput] = useState(getCustomSearchEndpoint());
+  const [searchFeedback, setSearchFeedback] = useState('');
 
   useEffect(() => {
     const unsubscribe = libraryStore.subscribe((store) => {
@@ -32,6 +43,21 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
     setSearchQuery(q);
     if (activeTab === 'local') {
       setTracks(libraryStore.search(q));
+    } else {
+      const directId = extractYouTubeVideoId(q);
+      if (directId) {
+        setYtResults([{
+          type: 'youtube',
+          id: `yt-${directId}`,
+          videoId: directId,
+          youtubeId: directId,
+          title: `Direct YouTube Track (${directId})`,
+          channel: 'Direct Link',
+          artist: 'Direct Link',
+          thumbnail: `https://i.ytimg.com/vi/${directId}/hqdefault.jpg`,
+          duration: 0
+        }]);
+      }
     }
   };
 
@@ -39,11 +65,16 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
     e?.preventDefault();
     if (!searchQuery.trim()) return;
     setIsYtSearching(true);
+    setSearchFeedback('');
     try {
       const results = await searchYouTubeKaraoke(searchQuery);
       setYtResults(results);
+      if (results.length === 0) {
+        setSearchFeedback('No videos found. You can paste any direct YouTube link (e.g. https://youtu.be/... or 11-char ID), or configure an API key.');
+      }
     } catch (err) {
       console.warn('YouTube search error:', err);
+      setSearchFeedback('Search failed. Check your network or paste a direct YouTube link.');
     } finally {
       setIsYtSearching(false);
     }
@@ -140,6 +171,24 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {activeTab === 'youtube' && (
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                style={{
+                  height: '34px',
+                  padding: '0 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: showSettings ? 'rgba(255, 42, 95, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+                  border: showSettings ? '1px solid var(--neon-coral)' : '1px solid var(--border-medium)',
+                  color: showSettings ? 'var(--neon-coral)' : '#fff',
+                  fontSize: '11px',
+                  fontWeight: 700
+                }}
+              >
+                ⚙️ API Settings
+              </button>
+            )}
+
             {activeTab === 'local' && (
               <button
                 onClick={handleSelectFolder}
@@ -174,6 +223,61 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
             </button>
           </div>
         </div>
+
+        {/* Optional YouTube API Settings Drawer */}
+        {showSettings && activeTab === 'youtube' && (
+          <div style={{
+            background: 'rgba(255, 42, 95, 0.06)',
+            borderBottom: '1px solid var(--border-subtle)',
+            padding: '16px 24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}>
+            <div style={{ fontSize: '12px', fontWeight: 800, color: '#fff' }}>
+              ⚙️ YouTube Search Configuration (Optional)
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+              By default, MicUp queries high-availability CORS mirrors or resolves direct YouTube URLs. You can also provide your own Google YouTube Data API v3 key or custom Cloudflare Worker for 100% dedicated availability.
+            </div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="Google YouTube Data API v3 Key (AIzaSy...)"
+                value={apiKeyInput}
+                onInput={(e) => setApiKeyInput(e.target.value)}
+                style={{
+                  flex: 1,
+                  height: '34px',
+                  background: 'rgba(9, 10, 15, 0.8)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '6px',
+                  padding: '0 12px',
+                  color: '#fff',
+                  fontSize: '12px',
+                  fontFamily: 'monospace'
+                }}
+              />
+              <button
+                onClick={() => {
+                  setYouTubeApiKey(apiKeyInput);
+                  alert(apiKeyInput ? 'YouTube API key saved!' : 'YouTube API key removed.');
+                }}
+                style={{
+                  height: '34px',
+                  padding: '0 14px',
+                  background: 'var(--neon-coral)',
+                  color: '#fff',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  fontWeight: 700
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Search Input Bar */}
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -343,7 +447,7 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
 
           {/* TAB 2: YOUTUBE KARAOKE */}
           {activeTab === 'youtube' && (
-            ytResults.length === 0 ? (
+            isYtSearching ? (
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -351,16 +455,45 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
                 justifyContent: 'center',
                 padding: '60px 20px',
                 textAlign: 'center',
+                color: 'var(--text-muted)'
+              }}>
+                <div style={{ fontSize: '28px', marginBottom: '12px', animation: 'spin 1s linear infinite' }}>⏳</div>
+                <div style={{ fontSize: '15px', fontWeight: 700, color: '#fff' }}>
+                  Searching YouTube Karaoke...
+                </div>
+              </div>
+            ) : ytResults.length === 0 ? (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '50px 20px',
+                textAlign: 'center',
                 color: 'var(--text-dim)'
               }}>
                 <div style={{ fontSize: '28px', marginBottom: '12px' }}>🔴</div>
                 <div style={{ fontSize: '16px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>
                   Live YouTube Karaoke Fallback
                 </div>
-                <div style={{ fontSize: '13px', maxWidth: '420px', lineHeight: 1.5, color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: '13px', maxWidth: '420px', lineHeight: 1.5, color: 'var(--text-muted)', marginBottom: '16px' }}>
                   Search for any brand new pop release or obscure track requested by a singer.
                   Videos play directly onto the second screen / TV window!
                 </div>
+                {searchFeedback && (
+                  <div style={{
+                    padding: '10px 16px',
+                    borderRadius: '8px',
+                    background: 'rgba(255, 42, 95, 0.1)',
+                    border: '1px solid rgba(255, 42, 95, 0.3)',
+                    color: 'var(--neon-coral)',
+                    fontSize: '12px',
+                    maxWidth: '440px',
+                    lineHeight: 1.4
+                  }}>
+                    {searchFeedback}
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
