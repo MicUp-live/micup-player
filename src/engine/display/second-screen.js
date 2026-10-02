@@ -78,10 +78,10 @@ export class SecondScreenController {
   /**
    * Broadcast time sync
    */
-  sendTimeSync(time, isPlaying) {
+  sendTimeSync(time, isPlaying, isSeek = false) {
     this.channel.postMessage({
       type: 'TIME_SYNC',
-      payload: { time, isPlaying }
+      payload: { time, isPlaying, isSeek }
     });
   }
 

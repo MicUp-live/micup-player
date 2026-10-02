@@ -28,7 +28,8 @@ export function formatYouTubeEmbedUrl(videoId, options = {}) {
     params.set('origin', window.location.origin);
   }
 
-  return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+  const domain = options.nocookie ? 'www.youtube-nocookie.com' : 'www.youtube.com';
+  return `https://${domain}/embed/${videoId}?${params.toString()}`;
 }
 
 export function parseYouTubeMessage(rawData) {

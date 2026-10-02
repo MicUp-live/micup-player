@@ -16,15 +16,53 @@ function StageApp() {
     duration: 0,
     upNextSinger: null,
     isPartyActive: false,
-    partyRoomCode: ''
+    partyRoomCode: '',
+    stageAudioMuted: false
   });
 
   const [announcement, setAnnouncement] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [hasInteracted, setHasInteracted] = useState(false);
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
   const youtubeRef = useRef(null);
   const cdgRendererRef = useRef(null);
+  const lastPlayingStateRef = useRef(null);
+
+  // Unlock audio playback on first user gesture to satisfy browser autoplay policies
+  const unlockAudio = () => {
+    if (!hasInteracted) {
+      setHasInteracted(true);
+    }
+    if (!state.stageAudioMuted) {
+      if (youtubeRef.current?.contentWindow) {
+        youtubeRef.current.contentWindow.postMessage(JSON.stringify({
+          event: 'command',
+          func: 'unMute',
+          args: []
+        }), '*');
+        youtubeRef.current.contentWindow.postMessage(JSON.stringify({
+          event: 'command',
+          func: 'setVolume',
+          args: [100]
+        }), '*');
+      }
+      if (videoRef.current) {
+        videoRef.current.muted = false;
+      }
+    }
+  };
+
+  // Listen for user click or key anywhere on the stage window
+  useEffect(() => {
+    const handleUserGesture = () => unlockAudio();
+    window.addEventListener('click', handleUserGesture);
+    window.addEventListener('keydown', handleUserGesture);
+    return () => {
+      window.removeEventListener('click', handleUserGesture);
+      window.removeEventListener('keydown', handleUserGesture);
+    };
+  }, [state.stageAudioMuted, hasInteracted]);
 
   // Monitor fullscreen change
   useEffect(() => {
@@ -36,6 +74,7 @@ function StageApp() {
   }, []);
 
   const toggleFullscreen = () => {
+    unlockAudio();
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
     } else {
@@ -54,10 +93,25 @@ function StageApp() {
 
       if (type === 'STATE_UPDATE') {
         setState(prev => ({ ...prev, ...payload }));
+
+        // Handle audio mute routing from host
+        if (typeof payload.stageAudioMuted === 'boolean') {
+          if (youtubeRef.current?.contentWindow) {
+            youtubeRef.current.contentWindow.postMessage(JSON.stringify({
+              event: 'command',
+              func: payload.stageAudioMuted ? 'mute' : 'unMute',
+              args: []
+            }), '*');
+          }
+          if (videoRef.current) {
+            videoRef.current.muted = payload.stageAudioMuted;
+          }
+        }
+
         if (payload.mediaType === 'video' && payload.videoUrl && videoRef.current) {
           if (videoRef.current.src !== payload.videoUrl) {
             videoRef.current.src = payload.videoUrl;
-            videoRef.current.muted = true;
+            videoRef.current.muted = Boolean(payload.stageAudioMuted);
           }
           if (payload.isPlaying) {
             videoRef.current.play().catch(() => {});
@@ -80,16 +134,18 @@ function StageApp() {
           videoRef.current.currentTime = payload.time;
         }
         if (youtubeRef.current?.contentWindow) {
-          if (payload.isPlaying) {
+          if (payload.isSeek) {
             youtubeRef.current.contentWindow.postMessage(JSON.stringify({
               event: 'command',
-              func: 'playVideo',
-              args: []
+              func: 'seekTo',
+              args: [payload.time, true]
             }), '*');
-          } else {
+          }
+          if (lastPlayingStateRef.current !== payload.isPlaying) {
+            lastPlayingStateRef.current = payload.isPlaying;
             youtubeRef.current.contentWindow.postMessage(JSON.stringify({
               event: 'command',
-              func: 'pauseVideo',
+              func: payload.isPlaying ? 'playVideo' : 'pauseVideo',
               args: []
             }), '*');
           }
@@ -117,18 +173,21 @@ function StageApp() {
     : '';
 
   return (
-    <div style={{
-      width: '100vw',
-      height: '100vh',
-      background: 'radial-gradient(ellipse at 50% 120%, rgba(255, 42, 95, 0.15) 0%, rgba(9, 10, 15, 1) 75%)',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      position: 'relative',
-      overflow: 'hidden',
-      color: '#fff'
-    }}>
+    <div
+      onClick={unlockAudio}
+      style={{
+        width: '100vw',
+        height: '100vh',
+        background: 'radial-gradient(ellipse at 50% 120%, rgba(255, 42, 95, 0.15) 0%, rgba(9, 10, 15, 1) 75%)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+        overflow: 'hidden',
+        color: '#fff'
+      }}
+    >
       {/* Semi-transparent Fullscreen Quick Button (Upper Right Hand Corner) */}
       <button
         onClick={toggleFullscreen}
@@ -428,7 +487,7 @@ function StageApp() {
         }}>
           <iframe
             ref={youtubeRef}
-            src={`https://www.youtube-nocookie.com/embed/${state.videoId}?autoplay=1&enablejsapi=1&controls=0&rel=0&mute=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}`}
+            src={`https://www.youtube.com/embed/${state.videoId}?autoplay=1&enablejsapi=1&controls=0&rel=0&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}`}
             title={state.title}
             allow="autoplay; encrypted-media"
             allowFullScreen
@@ -477,6 +536,36 @@ function StageApp() {
       )}
 
       {/* Subtle Corner QR Code Badge during Active Playback (ONLY IF PARTY IS ACTIVE) */}
+      {/* Click-to-Unlock Audio Reminder Banner (disappears on first interaction) */}
+      {!hasInteracted && state.mediaType !== 'idle' && (
+        <div
+          onClick={unlockAudio}
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1100,
+            background: 'rgba(18, 21, 30, 0.92)',
+            border: '1px solid rgba(0, 240, 255, 0.5)',
+            borderRadius: '30px',
+            padding: '10px 22px',
+            color: '#00f0ff',
+            fontSize: '13px',
+            fontWeight: 700,
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            backdropFilter: 'blur(10px)',
+            letterSpacing: '0.02em'
+          }}
+        >
+          <span>🔊 Click anywhere to ensure TV sound is active</span>
+        </div>
+      )}
+
       {isPartyActive && state.mediaType !== 'idle' && (
         <div style={{
           position: 'absolute',

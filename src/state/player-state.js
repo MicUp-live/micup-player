@@ -20,6 +20,7 @@ export const isSecondScreenConnected = signal(false);
 export const bgmActive = signal(false);
 export const autoApplause = signal(true);
 export const isMuted = signal(false);
+export const audioOutputTarget = signal('stage'); // 'stage' | 'host'
 
 // Computed helpers
 export const upNextSinger = computed(() => {

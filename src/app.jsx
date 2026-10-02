@@ -17,7 +17,8 @@ import {
   queue,
   upNextSinger,
   autoApplause,
-  isSecondScreenConnected
+  isSecondScreenConnected,
+  audioOutputTarget
 } from './state/player-state.js';
 
 import { isPartyActive, partyRoomCode, partyBroker, partySessionId, broadcastCurrentPartyQueue, startPartyHost } from './state/party-state.js';
@@ -102,6 +103,7 @@ export function App() {
         videoUrl: current?.videoUrl || null,
         semitones: semitones.value,
         isPlaying: isPlaying.value,
+        stageAudioMuted: audioOutputTarget.value === 'host',
         upNextSinger: current ? (queue.value[1] || null) : (queue.value[0] || null),
         isPartyActive: isPartyActive.value,
         partyRoomCode: partyRoomCode.value,
@@ -117,6 +119,15 @@ export function App() {
       secondScreen.sendPartyState(isPartyActive.value, partyRoomCode.value, partyBroker.value, partySessionId.value);
     };
   }, []);
+
+  // Sync audio mute routing when user switches audio target
+  useEffect(() => {
+    if (isSecondScreenConnected.value) {
+      secondScreen.sendState({
+        stageAudioMuted: audioOutputTarget.value === 'host'
+      });
+    }
+  }, [audioOutputTarget.value, isSecondScreenConnected.value]);
 
   // Initialize CDG Renderer on canvas mount
   useEffect(() => {
@@ -214,6 +225,7 @@ export function App() {
           singerName: loaded.singerName,
           semitones: targetSemitones,
           isPlaying: true,
+          stageAudioMuted: audioOutputTarget.value === 'host',
           upNextSinger: queue.value[1] || null,
           isPartyActive: isPartyActive.value,
           partyRoomCode: partyRoomCode.value
@@ -286,6 +298,7 @@ export function App() {
           singerName: loaded.singerName,
           semitones: targetSemitones,
           isPlaying: true,
+          stageAudioMuted: audioOutputTarget.value === 'host',
           upNextSinger: queue.value[1] || null,
           isPartyActive: isPartyActive.value,
           partyRoomCode: partyRoomCode.value
@@ -367,7 +380,7 @@ export function App() {
     if (currentTrack.value?.type === 'youtube') {
       youtubeControllerRef.current?.seekTo(newTime);
       currentTime.value = newTime;
-      secondScreen.sendTimeSync(newTime, isPlaying.value);
+      secondScreen.sendTimeSync(newTime, isPlaying.value, true);
       return;
     }
 
@@ -381,7 +394,7 @@ export function App() {
       cdgRendererRef.current.seek(newTime);
     }
 
-    secondScreen.sendTimeSync(newTime, isPlaying.value);
+    secondScreen.sendTimeSync(newTime, isPlaying.value, true);
   };
 
   /**

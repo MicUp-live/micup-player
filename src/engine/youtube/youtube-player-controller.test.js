@@ -14,7 +14,7 @@ test('formatYouTubeEmbedUrl constructs valid embed URL with parameters', () => {
     origin: 'https://micup.live'
   });
 
-  assert.ok(url.includes('https://www.youtube-nocookie.com/embed/9Lxm0iSnKNc'));
+  assert.ok(url.includes('https://www.youtube.com/embed/9Lxm0iSnKNc'));
   assert.ok(url.includes('autoplay=1'));
   assert.ok(url.includes('enablejsapi=1'));
   assert.ok(url.includes('controls=0'));

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { currentTrack, isPlaying, semitones } from '../state/player-state.js';
+import { currentTrack, isPlaying, semitones, isSecondScreenConnected, audioOutputTarget } from '../state/player-state.js';
 import { CDG_WIDTH, CDG_HEIGHT } from '../engine/cdg/cdg-renderer.js';
 import { audioEngine } from '../engine/audio/audio-engine.js';
 
@@ -45,6 +45,21 @@ export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile }) {
   const isVideo = track && track.type === 'video';
   const isYouTube = track && track.type === 'youtube';
   const isIdle = !track;
+  const shouldMuteHost = isSecondScreenConnected.value && audioOutputTarget.value === 'stage';
+
+  // Dynamically sync mute state to iframe and video without reloading
+  useEffect(() => {
+    if (youtubeRef.current?.contentWindow && isYouTube) {
+      youtubeRef.current.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func: shouldMuteHost ? 'mute' : 'unMute',
+        args: []
+      }), '*');
+    }
+    if (videoRef.current && isVideo) {
+      videoRef.current.muted = shouldMuteHost;
+    }
+  }, [shouldMuteHost, isYouTube, isVideo]);
 
   return (
     <div
@@ -65,6 +80,43 @@ export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile }) {
         boxShadow: 'inset 0 0 40px rgba(0, 0, 0, 0.8)'
       }}
     >
+      {/* Audio Routing Indicator Badge */}
+      {isSecondScreenConnected.value && (isYouTube || isVideo) && (
+        <div style={{
+          position: 'absolute',
+          top: '12px',
+          right: '12px',
+          zIndex: 20,
+          background: 'rgba(9, 10, 15, 0.88)',
+          border: shouldMuteHost ? '1px solid rgba(0, 240, 255, 0.4)' : '1px solid rgba(255, 42, 95, 0.4)',
+          borderRadius: '8px',
+          padding: '5px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          backdropFilter: 'blur(8px)',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)'
+        }}>
+          <span style={{ fontSize: '12px', color: shouldMuteHost ? 'var(--neon-cyan)' : 'var(--neon-coral)', fontWeight: 700 }}>
+            {shouldMuteHost ? '📺 Audio: TV Stage Screen (Host Muted)' : '💻 Audio: Host Laptop (TV Muted)'}
+          </span>
+          <button
+            onClick={() => { audioOutputTarget.value = shouldMuteHost ? 'host' : 'stage'; }}
+            style={{
+              background: 'rgba(255, 255, 255, 0.12)',
+              border: '1px solid rgba(255, 255, 255, 0.2)',
+              borderRadius: '4px',
+              color: '#fff',
+              fontSize: '11px',
+              padding: '2px 8px',
+              cursor: 'pointer'
+            }}
+          >
+            {shouldMuteHost ? 'Switch to Laptop' : 'Switch to TV'}
+          </button>
+        </div>
+      )}
+
       {/* CD+G Canvas Display */}
       <canvas
         ref={canvasRef}
@@ -84,6 +136,7 @@ export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile }) {
       {/* HTML5 Video Element */}
       <video
         ref={videoRef}
+        muted={shouldMuteHost}
         style={{
           display: isVideo ? 'block' : 'none',
           maxWidth: '100%',
@@ -96,7 +149,7 @@ export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile }) {
       {isYouTube && (
         <iframe
           ref={youtubeRef}
-          src={`https://www.youtube-nocookie.com/embed/${track.videoId}?autoplay=1&enablejsapi=1&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}`}
+          src={`https://www.youtube.com/embed/${track.videoId}?autoplay=1&enablejsapi=1${shouldMuteHost ? '&mute=1' : ''}&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}`}
           title={track.title}
           allow="autoplay; encrypted-media"
           allowFullScreen
