@@ -19,7 +19,9 @@ import {
   queue,
   upNextSinger,
   autoApplause,
-  showCode
+  showCode,
+  isCloudLinked,
+  isSecondScreenConnected
 } from './state/player-state.js';
 
 import { isPartyActive, partyRoomCode, broadcastCurrentPartyQueue } from './state/party-state.js';
@@ -31,6 +33,7 @@ import { libraryStore } from './engine/library/library-store.js';
 import { secondScreen } from './engine/display/second-screen.js';
 import { soundPads } from './engine/sfx/sound-pads.js';
 import { YouTubePlayerController } from './engine/youtube/youtube-player-controller.js';
+import { saveShowStateToCookie, loadShowStateFromCookie } from './state/show-persistence.js';
 
 export function App() {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -48,6 +51,85 @@ export function App() {
   // Restore saved folder from IndexedDB on startup
   useEffect(() => {
     libraryStore.restoreSavedDirectory().catch(() => {});
+  }, []);
+
+  // Restore show state from cookies on initial load
+  useEffect(() => {
+    try {
+      const saved = loadShowStateFromCookie();
+      if (saved) {
+        if (Array.isArray(saved.queue) && saved.queue.length > 0) {
+          queue.value = saved.queue;
+        }
+        if (saved.showCode) {
+          showCode.value = saved.showCode;
+        }
+        if (saved.autoApplause !== undefined) {
+          autoApplause.value = Boolean(saved.autoApplause);
+        }
+        if (saved.isPartyActive !== undefined) {
+          isPartyActive.value = Boolean(saved.isPartyActive);
+        }
+        if (saved.partyRoomCode) {
+          partyRoomCode.value = saved.partyRoomCode;
+        }
+        if (saved.isCloudLinked && saved.showCode) {
+          isCloudLinked.value = true;
+          cloudQueueClient.startPolling({
+            eventId: saved.showCode,
+            libraryStore,
+            onUpdate: (activeQueue) => {
+              queue.value = activeQueue;
+              isCloudLinked.value = true;
+            }
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to restore show state from cookie:', err);
+    }
+  }, []);
+
+  // Persist show state to cookies on state changes
+  useEffect(() => {
+    saveShowStateToCookie({
+      queue: queue.value,
+      showCode: showCode.value,
+      isCloudLinked: isCloudLinked.value,
+      autoApplause: autoApplause.value,
+      isPartyActive: isPartyActive.value,
+      partyRoomCode: partyRoomCode.value
+    });
+  }, [
+    queue.value,
+    showCode.value,
+    isCloudLinked.value,
+    autoApplause.value,
+    isPartyActive.value,
+    partyRoomCode.value
+  ]);
+
+  // Handshake listener for Second Screen window
+  useEffect(() => {
+    secondScreen.onStageConnected = () => {
+      isSecondScreenConnected.value = true;
+      const current = currentTrack.value;
+      secondScreen.sendState({
+        mediaType: current ? current.type : 'idle',
+        videoId: current?.videoId || null,
+        title: current?.title || null,
+        artist: current?.artist || null,
+        singerName: current?.singerName || null,
+        semitones: semitones.value,
+        isPlaying: isPlaying.value,
+        upNextSinger: current ? (queue.value[1] || null) : (queue.value[0] || null),
+        showCode: showCode.value,
+        isCloudLinked: isCloudLinked.value,
+        isPartyActive: isPartyActive.value,
+        partyRoomCode: partyRoomCode.value
+      });
+      secondScreen.sendPartyState(isPartyActive.value, partyRoomCode.value);
+    };
   }, []);
 
   // Initialize CDG Renderer on canvas mount
@@ -147,7 +229,10 @@ export function App() {
           semitones: targetSemitones,
           isPlaying: true,
           upNextSinger: queue.value[1] || null,
-          showCode: showCode.value
+          showCode: showCode.value,
+          isCloudLinked: isCloudLinked.value,
+          isPartyActive: isPartyActive.value,
+          partyRoomCode: partyRoomCode.value
         });
         return;
       }
@@ -195,7 +280,10 @@ export function App() {
           semitones: targetSemitones,
           isPlaying: true,
           upNextSinger: queue.value[1] || null,
-          showCode: showCode.value
+          showCode: showCode.value,
+          isCloudLinked: isCloudLinked.value,
+          isPartyActive: isPartyActive.value,
+          partyRoomCode: partyRoomCode.value
         });
         secondScreen.sendCDGData(loaded.cdgData);
 
@@ -217,7 +305,10 @@ export function App() {
           semitones: targetSemitones,
           isPlaying: true,
           upNextSinger: queue.value[1] || null,
-          showCode: showCode.value
+          showCode: showCode.value,
+          isCloudLinked: isCloudLinked.value,
+          isPartyActive: isPartyActive.value,
+          partyRoomCode: partyRoomCode.value
         });
       }
     } catch (err) {
@@ -360,7 +451,10 @@ export function App() {
       singerName: null,
       isPlaying: false,
       upNextSinger: queue.value[0] || null,
-      showCode: showCode.value
+      showCode: showCode.value,
+      isCloudLinked: isCloudLinked.value,
+      isPartyActive: isPartyActive.value,
+      partyRoomCode: partyRoomCode.value
     });
   };
 
@@ -426,13 +520,20 @@ export function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [semitones.value, isPlaying.value, currentTrack.value]);
 
-  // Broadcast party queue and stage party state updates
+  // Broadcast party queue and stage updates whenever links or queue change
   useEffect(() => {
     if (isPartyActive.value) {
       broadcastCurrentPartyQueue();
     }
     secondScreen.sendPartyState(isPartyActive.value, partyRoomCode.value);
-  }, [queue.value, currentTrack.value, isPartyActive.value, partyRoomCode.value]);
+    secondScreen.sendState({
+      showCode: showCode.value,
+      isCloudLinked: isCloudLinked.value,
+      isPartyActive: isPartyActive.value,
+      partyRoomCode: partyRoomCode.value,
+      upNextSinger: currentTrack.value ? (queue.value[1] || null) : (queue.value[0] || null)
+    });
+  }, [queue.value, currentTrack.value, isPartyActive.value, partyRoomCode.value, isCloudLinked.value, showCode.value]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
