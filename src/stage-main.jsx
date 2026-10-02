@@ -286,6 +286,65 @@ function StageApp() {
           }}
         />
       </div>
+
+      {/* ACTIVE PLAYBACK (YouTube Video) */}
+      {state.mediaType === 'youtube' && state.videoId && (
+        <div style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative'
+        }}>
+          <iframe
+            src={`https://www.youtube-nocookie.com/embed/${state.videoId}?autoplay=1&enablejsapi=1&controls=0&rel=0`}
+            title={state.title}
+            allow="autoplay; encrypted-media"
+            allowFullScreen
+            style={{
+              width: '100vw',
+              height: '100vh',
+              border: 'none'
+            }}
+          />
+
+          {/* Lower-third overlay on YouTube video */}
+          {state.singerName && (
+            <div style={{
+              position: 'absolute',
+              bottom: '32px',
+              left: '40px',
+              background: 'rgba(18, 21, 30, 0.92)',
+              border: '1px solid rgba(255, 42, 95, 0.4)',
+              borderRadius: '16px',
+              padding: '12px 24px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '14px',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.7)',
+              backdropFilter: 'blur(10px)',
+              zIndex: 10
+            }}>
+              <span style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                background: '#ff2a5f',
+                boxShadow: '0 0 10px #ff2a5f'
+              }} />
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#ff2a5f', fontWeight: 800 }}>
+                  ON STAGE
+                </span>
+                <span style={{ fontSize: '20px', fontWeight: 800, color: '#fff' }}>
+                  {state.singerName}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

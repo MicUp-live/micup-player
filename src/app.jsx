@@ -55,6 +55,31 @@ export function App() {
    */
   const playTrack = async (trackSource, singerName = '', targetSemitones = 0) => {
     try {
+      if (trackSource.type === 'youtube' || trackSource.videoId) {
+        const loaded = {
+          type: 'youtube',
+          videoId: trackSource.videoId,
+          title: trackSource.title,
+          artist: trackSource.channel || trackSource.artist || 'YouTube',
+          singerName: singerName || (upNextSinger.value?.singerName || '')
+        };
+        currentTrack.value = loaded;
+        isPlaying.value = true;
+
+        secondScreen.sendState({
+          mediaType: 'youtube',
+          videoId: loaded.videoId,
+          title: loaded.title,
+          artist: loaded.artist,
+          singerName: loaded.singerName,
+          semitones: targetSemitones,
+          isPlaying: true,
+          upNextSinger: queue.value[1] || null,
+          showCode: showCode.value
+        });
+        return;
+      }
+
       let file = trackSource.file;
       if (!file && trackSource.handle) {
         file = await trackSource.handle.getFile();
@@ -133,12 +158,17 @@ export function App() {
    * Start song from Up Next in queue
    */
   const handleStartQueueItem = async (queueItem) => {
+    if (queueItem.type === 'youtube' || queueItem.videoId) {
+      await playTrack(queueItem, queueItem.singerName, queueItem.semitones);
+      return;
+    }
+
     // Try to auto-match track from local library
     const matched = libraryStore.matchRequest(queueItem.artist, queueItem.title);
     if (matched) {
       await playTrack(matched, queueItem.singerName, queueItem.semitones);
     } else {
-      // If not in library, open library modal to let host choose
+      // If not in library, open library modal to let host choose (local or YouTube)
       setIsLibraryOpen(true);
     }
   };

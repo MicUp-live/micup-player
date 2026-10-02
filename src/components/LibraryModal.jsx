@@ -1,26 +1,52 @@
 import { useState, useEffect } from 'preact/hooks';
 import { libraryStore } from '../engine/library/library-store.js';
+import { searchYouTubeKaraoke } from '../engine/youtube/youtube-helper.js';
 
 export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
+  const [activeTab, setActiveTab] = useState('local'); // 'local' | 'youtube'
   const [searchQuery, setSearchQuery] = useState('');
   const [tracks, setTracks] = useState([]);
   const [isScanning, setIsScanning] = useState(false);
   const [scanCount, setScanCount] = useState(0);
 
+  // YouTube search state
+  const [ytResults, setYtResults] = useState([]);
+  const [isYtSearching, setIsYtSearching] = useState(false);
+
   useEffect(() => {
     const unsubscribe = libraryStore.subscribe((store) => {
       setIsScanning(store.isScanning);
       setScanCount(store.tracks.length);
-      setTracks(store.search(searchQuery));
+      if (activeTab === 'local') {
+        setTracks(store.search(searchQuery));
+      }
     });
-    setTracks(libraryStore.search(searchQuery));
+    if (activeTab === 'local') {
+      setTracks(libraryStore.search(searchQuery));
+    }
     return unsubscribe;
-  }, [searchQuery]);
+  }, [searchQuery, activeTab]);
 
   const handleSearch = (e) => {
     const q = e.target.value;
     setSearchQuery(q);
-    setTracks(libraryStore.search(q));
+    if (activeTab === 'local') {
+      setTracks(libraryStore.search(q));
+    }
+  };
+
+  const handleYouTubeSearch = async (e) => {
+    e?.preventDefault();
+    if (!searchQuery.trim()) return;
+    setIsYtSearching(true);
+    try {
+      const results = await searchYouTubeKaraoke(searchQuery);
+      setYtResults(results);
+    } catch (err) {
+      console.warn('YouTube search error:', err);
+    } finally {
+      setIsYtSearching(false);
+    }
   };
 
   const handleSelectFolder = async () => {
@@ -57,61 +83,91 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
         flexDirection: 'column',
         overflow: 'hidden'
       }}>
-        {/* Modal Header */}
+        {/* Modal Header & Tabs */}
         <div style={{
-          padding: '20px 24px',
+          padding: '16px 24px',
           borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px'
         }}>
-          <div>
-            <div className="font-display" style={{ fontSize: '20px', fontWeight: 800, color: '#fff' }}>
-              LOCAL MUSIC LIBRARY
-            </div>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-              {isScanning ? (
-                <span style={{ color: 'var(--neon-amber)' }}>
-                  Scanning folder... Found {scanCount} tracks
-                </span>
-              ) : (
-                <span>
-                  {libraryStore.tracks.length > 0
-                    ? `${libraryStore.tracks.length} tracks indexed from local storage`
-                    : 'No folder connected yet'}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Tab Selector */}
+          <div style={{
+            display: 'flex',
+            background: 'rgba(9, 10, 15, 0.6)',
+            padding: '4px',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border-subtle)',
+            gap: '4px'
+          }}>
             <button
-              onClick={handleSelectFolder}
-              disabled={isScanning}
+              onClick={() => setActiveTab('local')}
               style={{
-                height: '36px',
+                height: '32px',
                 padding: '0 14px',
-                borderRadius: 'var(--radius-sm)',
-                background: 'rgba(255, 255, 255, 0.08)',
-                border: '1px solid var(--border-medium)',
-                color: '#fff',
+                borderRadius: '6px',
+                background: activeTab === 'local' ? 'rgba(255, 255, 255, 0.1)' : 'none',
+                color: activeTab === 'local' ? '#fff' : 'var(--text-muted)',
                 fontSize: '12px',
                 fontWeight: 700,
                 gap: '6px'
               }}
             >
-              📁 {libraryStore.tracks.length > 0 ? 'Change Folder' : 'Connect Folder'}
+              📁 Local Media ({libraryStore.tracks.length})
             </button>
+            <button
+              onClick={() => {
+                setActiveTab('youtube');
+                if (searchQuery.trim() && ytResults.length === 0) {
+                  handleYouTubeSearch();
+                }
+              }}
+              style={{
+                height: '32px',
+                padding: '0 14px',
+                borderRadius: '6px',
+                background: activeTab === 'youtube' ? 'rgba(255, 42, 95, 0.2)' : 'none',
+                color: activeTab === 'youtube' ? 'var(--neon-coral)' : 'var(--text-muted)',
+                fontSize: '12px',
+                fontWeight: 700,
+                gap: '6px'
+              }}
+            >
+              🔴 YouTube Karaoke
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {activeTab === 'local' && (
+              <button
+                onClick={handleSelectFolder}
+                disabled={isScanning}
+                style={{
+                  height: '34px',
+                  padding: '0 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid var(--border-medium)',
+                  color: '#fff',
+                  fontSize: '11px',
+                  fontWeight: 700
+                }}
+              >
+                {libraryStore.tracks.length > 0 ? 'Change Folder' : 'Connect Folder'}
+              </button>
+            )}
 
             <button
               onClick={onClose}
               style={{
-                width: '36px',
-                height: '36px',
+                width: '32px',
+                height: '32px',
                 borderRadius: '50%',
                 background: 'rgba(255, 255, 255, 0.05)',
                 color: 'var(--text-muted)',
-                fontSize: '16px'
+                fontSize: '14px'
               }}
             >
               ✕
@@ -119,9 +175,9 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
           </div>
         </div>
 
-        {/* Search Input */}
+        {/* Search Input Bar */}
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-subtle)' }}>
-          <div style={{
+          <form onSubmit={activeTab === 'youtube' ? handleYouTubeSearch : (e) => e.preventDefault()} style={{
             display: 'flex',
             alignItems: 'center',
             background: 'rgba(9, 10, 15, 0.6)',
@@ -135,7 +191,7 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
             </svg>
             <input
               type="text"
-              placeholder="Search by artist, song title, or disc code..."
+              placeholder={activeTab === 'local' ? 'Search local songs by artist, title, disc code...' : 'Search YouTube karaoke or paste YouTube link...'}
               value={searchQuery}
               onInput={handleSearch}
               style={{
@@ -151,118 +207,242 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
               }}
               autoFocus
             />
-          </div>
+            {activeTab === 'youtube' && (
+              <button
+                type="submit"
+                disabled={isYtSearching}
+                style={{
+                  height: '30px',
+                  padding: '0 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--neon-coral)',
+                  color: '#fff',
+                  fontSize: '11px',
+                  fontWeight: 700
+                }}
+              >
+                {isYtSearching ? 'Searching...' : 'Search YouTube'}
+              </button>
+            )}
+          </form>
         </div>
 
-        {/* Track List */}
+        {/* Content Area */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px' }}>
-          {tracks.length === 0 ? (
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '60px 20px',
-              textAlign: 'center',
-              color: 'var(--text-dim)'
-            }}>
-              {libraryStore.tracks.length === 0 ? (
-                <>
-                  <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px' }}>
-                    No karaoke folder connected
-                  </div>
-                  <div style={{ fontSize: '13px', maxWidth: '380px', marginBottom: '20px' }}>
-                    Click <strong>Connect Folder</strong> to link your local hard drive or external USB drive containing .zip (MP3+G) or .mp4 files.
-                  </div>
-                  <button
-                    onClick={handleSelectFolder}
-                    style={{
-                      height: '40px',
-                      padding: '0 20px',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'var(--grad-hotmic)',
-                      color: '#fff',
-                      fontSize: '13px',
-                      fontWeight: 700
-                    }}
-                  >
-                    Select Karaoke Folder
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-muted)' }}>
-                    No matches found for "{searchQuery}"
-                  </div>
-                  <div style={{ fontSize: '13px', marginTop: '4px' }}>
-                    Try searching by artist name or partial song title.
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {tracks.map((track) => (
-                <div
-                  key={track.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 16px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'rgba(255, 255, 255, 0.02)',
-                    border: '1px solid var(--border-subtle)'
-                  }}
-                >
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>
-                      {track.title}
+          {/* TAB 1: LOCAL MEDIA */}
+          {activeTab === 'local' && (
+            tracks.length === 0 ? (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '60px 20px',
+                textAlign: 'center',
+                color: 'var(--text-dim)'
+              }}>
+                {libraryStore.tracks.length === 0 ? (
+                  <>
+                    <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px' }}>
+                      No karaoke folder connected
                     </div>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                      {track.artist} {track.code ? `• [${track.code}]` : ''}
+                    <div style={{ fontSize: '13px', maxWidth: '380px', marginBottom: '20px' }}>
+                      Click <strong>Connect Folder</strong> to link your local hard drive or external drive containing .zip (MP3+G) or .mp4 files.
                     </div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '16px' }}>
                     <button
-                      onClick={() => {
-                        onQueueTrack(track);
-                        onClose();
-                      }}
+                      onClick={handleSelectFolder}
                       style={{
-                        height: '32px',
-                        padding: '0 12px',
-                        borderRadius: 'var(--radius-sm)',
-                        background: 'rgba(255, 255, 255, 0.08)',
-                        color: 'var(--text-main)',
-                        fontSize: '12px',
-                        fontWeight: 600
-                      }}
-                    >
-                      + Queue
-                    </button>
-                    <button
-                      onClick={() => {
-                        onSelectTrack(track);
-                        onClose();
-                      }}
-                      style={{
-                        height: '32px',
-                        padding: '0 14px',
+                        height: '40px',
+                        padding: '0 20px',
                         borderRadius: 'var(--radius-sm)',
                         background: 'var(--grad-hotmic)',
                         color: '#fff',
-                        fontSize: '12px',
+                        fontSize: '13px',
                         fontWeight: 700
                       }}
                     >
-                      Play Now
+                      Select Karaoke Folder
                     </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-muted)' }}>
+                      No matches found for "{searchQuery}"
+                    </div>
+                    <div style={{ fontSize: '13px', marginTop: '4px' }}>
+                      Can't find it locally? Switch to the <strong>🔴 YouTube Karaoke</strong> tab above!
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {tracks.map((track) => (
+                  <div
+                    key={track.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px 16px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'rgba(255, 255, 255, 0.02)',
+                      border: '1px solid var(--border-subtle)'
+                    }}
+                  >
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#fff' }}>
+                        {track.title}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        {track.artist} {track.code ? `• [${track.code}]` : ''}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '16px' }}>
+                      <button
+                        onClick={() => {
+                          onQueueTrack(track);
+                          onClose();
+                        }}
+                        style={{
+                          height: '32px',
+                          padding: '0 12px',
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'rgba(255, 255, 255, 0.08)',
+                          color: 'var(--text-main)',
+                          fontSize: '12px',
+                          fontWeight: 600
+                        }}
+                      >
+                        + Queue
+                      </button>
+                      <button
+                        onClick={() => {
+                          onSelectTrack(track);
+                          onClose();
+                        }}
+                        style={{
+                          height: '32px',
+                          padding: '0 14px',
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'var(--grad-hotmic)',
+                          color: '#fff',
+                          fontSize: '12px',
+                          fontWeight: 700
+                        }}
+                      >
+                        Play Now
+                      </button>
+                    </div>
                   </div>
+                ))}
+              </div>
+            )
+          )}
+
+          {/* TAB 2: YOUTUBE KARAOKE */}
+          {activeTab === 'youtube' && (
+            ytResults.length === 0 ? (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '60px 20px',
+                textAlign: 'center',
+                color: 'var(--text-dim)'
+              }}>
+                <div style={{ fontSize: '28px', marginBottom: '12px' }}>🔴</div>
+                <div style={{ fontSize: '16px', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>
+                  Live YouTube Karaoke Fallback
                 </div>
-              ))}
-            </div>
+                <div style={{ fontSize: '13px', maxWidth: '420px', lineHeight: 1.5, color: 'var(--text-muted)' }}>
+                  Search for any brand new pop release or obscure track requested by a singer.
+                  Videos play directly onto the second screen / TV window!
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {ytResults.map((item) => (
+                  <div
+                    key={item.videoId}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: '10px',
+                      borderRadius: 'var(--radius-md)',
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid var(--border-subtle)',
+                      gap: '14px'
+                    }}
+                  >
+                    {/* Video Thumbnail */}
+                    {item.thumbnail ? (
+                      <img
+                        src={item.thumbnail}
+                        alt=""
+                        style={{
+                          width: '88px',
+                          height: '52px',
+                          objectFit: 'cover',
+                          borderRadius: '6px',
+                          flexShrink: 0
+                        }}
+                      />
+                    ) : (
+                      <div style={{ width: '88px', height: '52px', background: '#000', borderRadius: '6px' }} />
+                    )}
+
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '13.5px', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {item.title}
+                      </div>
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        {item.channel}
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <button
+                        onClick={() => {
+                          onQueueTrack(item);
+                          onClose();
+                        }}
+                        style={{
+                          height: '32px',
+                          padding: '0 12px',
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'rgba(255, 255, 255, 0.08)',
+                          color: 'var(--text-main)',
+                          fontSize: '12px',
+                          fontWeight: 600
+                        }}
+                      >
+                        + Queue
+                      </button>
+                      <button
+                        onClick={() => {
+                          onSelectTrack(item);
+                          onClose();
+                        }}
+                        style={{
+                          height: '32px',
+                          padding: '0 14px',
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'var(--neon-coral)',
+                          color: '#fff',
+                          fontSize: '12px',
+                          fontWeight: 700
+                        }}
+                      >
+                        Play Video
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
           )}
         </div>
       </div>

@@ -43,6 +43,7 @@ export function StageMonitor({ canvasRef, videoRef, onDropFile }) {
   const track = currentTrack.value;
   const isCDG = track && track.type === 'cdg';
   const isVideo = track && track.type === 'video';
+  const isYouTube = track && track.type === 'youtube';
   const isIdle = !track;
 
   return (
@@ -90,6 +91,25 @@ export function StageMonitor({ canvasRef, videoRef, onDropFile }) {
           aspectRatio: '16/9'
         }}
       />
+
+      {/* YouTube Video Embed */}
+      {isYouTube && (
+        <iframe
+          src={`https://www.youtube-nocookie.com/embed/${track.videoId}?autoplay=1&enablejsapi=1`}
+          title={track.title}
+          allow="autoplay; encrypted-media"
+          allowFullScreen
+          style={{
+            width: 'calc(100% - 32px)',
+            maxWidth: '800px',
+            aspectRatio: '16/9',
+            maxHeight: 'calc(100% - 32px)',
+            borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border-subtle)',
+            boxShadow: '0 8px 30px rgba(0, 0, 0, 0.7)'
+          }}
+        />
+      )}
 
       {/* Idle / Drag & Drop Dropzone */}
       {isIdle && (

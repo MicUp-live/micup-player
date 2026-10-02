@@ -96,8 +96,13 @@ export function QueuePanel({ onStartSong, onAddFromLibrary }) {
           <div style={{ fontSize: '18px', fontWeight: 800, color: '#fff', marginBottom: '2px' }}>
             {upNext.singerName}
           </div>
-          <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '2px' }}>
-            "{upNext.title}"
+          <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-main)', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>"{upNext.title}"</span>
+            {(upNext.type === 'youtube' || upNext.videoId) && (
+              <span className="badge badge-coral" style={{ fontSize: '9px', padding: '1px 5px' }}>
+                YOUTUBE
+              </span>
+            )}
           </div>
           <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px' }}>
             {upNext.artist}
@@ -182,8 +187,11 @@ export function QueuePanel({ onStartSong, onAddFromLibrary }) {
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {item.title} — {item.artist}
+                <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  {(item.type === 'youtube' || item.videoId) && (
+                    <span style={{ color: 'var(--neon-coral)', fontWeight: 800, fontSize: '9px' }}>[YT]</span>
+                  )}
+                  <span>{item.title} — {item.artist}</span>
                 </div>
               </div>
 
