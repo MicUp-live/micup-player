@@ -74,7 +74,7 @@ export function PartyApp() {
     } catch (err) {
       console.error('Failed to join party:', err);
       setConnectionStatus('disconnected');
-      alert('Could not connect to party room. Make sure you are on the same Wi-Fi or check the code.');
+      alert('Could not connect to party room. Please check the 5-letter room code and try again.');
     }
   };
 

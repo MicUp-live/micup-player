@@ -4,7 +4,7 @@ import {
   createSfxMessage,
   parsePartyMessage
 } from './party-protocol.js';
-import { VDONinjaTransport } from './vdo-transport.js';
+import { MqttPartyTransport } from './mqtt-transport.js';
 
 export class PartyClient {
   constructor({
@@ -13,7 +13,7 @@ export class PartyClient {
     onConnected = null,
     onDisconnected = null
   } = {}) {
-    this.transport = transport || new VDONinjaTransport();
+    this.transport = transport || new MqttPartyTransport({ isHost: false });
     this.onQueueUpdate = onQueueUpdate;
     this.onConnected = onConnected;
     this.onDisconnected = onDisconnected;

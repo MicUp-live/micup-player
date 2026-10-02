@@ -4,7 +4,7 @@ import {
   createQueueUpdateMessage,
   parsePartyMessage
 } from './party-protocol.js';
-import { VDONinjaTransport } from './vdo-transport.js';
+import { MqttPartyTransport } from './mqtt-transport.js';
 
 export class PartyHost {
   constructor({
@@ -13,7 +13,7 @@ export class PartyHost {
     onTriggerSfx = null,
     onSearch = null
   } = {}) {
-    this.transport = transport || new VDONinjaTransport();
+    this.transport = transport || new MqttPartyTransport({ isHost: true });
     this.onAddSong = onAddSong;
     this.onTriggerSfx = onTriggerSfx;
     this.onSearch = onSearch;

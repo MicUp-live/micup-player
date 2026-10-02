@@ -15,8 +15,6 @@ function StageApp() {
     currentTime: 0,
     duration: 0,
     upNextSinger: null,
-    showCode: 'MICUP-LIVE',
-    isCloudLinked: false,
     isPartyActive: false,
     partyRoomCode: ''
   });
@@ -100,10 +98,10 @@ function StageApp() {
     return () => channel.close();
   }, []);
 
-  const isLinked = Boolean((state.isPartyActive && state.partyRoomCode) || (state.isCloudLinked && state.showCode));
-  const joinUrl = state.isPartyActive && state.partyRoomCode
-    ? (typeof window !== 'undefined' && window.location ? new URL(`party.html?room=${encodeURIComponent(state.partyRoomCode)}`, window.location.href).href : '')
-    : (state.isCloudLinked && state.showCode ? `https://micup.live/join/${encodeURIComponent(state.showCode)}` : '');
+  const isPartyActive = Boolean(state.isPartyActive && state.partyRoomCode);
+  const joinUrl = isPartyActive && typeof window !== 'undefined' && window.location
+    ? new URL(`party.html?room=${encodeURIComponent(state.partyRoomCode)}`, window.location.href).href
+    : '';
 
   return (
     <div style={{
@@ -242,22 +240,20 @@ function StageApp() {
             margin: '0 0 36px 0',
             fontWeight: 500
           }}>
-            {isLinked ? 'The mic is hot. Scan to browse the catalog & submit your song!' : 'The mic is hot. Ready for the next singer on stage.'}
+            {isPartyActive ? 'The mic is hot. Scan to browse songs & join the queue!' : 'The mic is hot. Ready for the next singer on stage.'}
           </p>
 
-          {/* Show Code & Instructions Card (ONLY IF LINKED WITH P2P OR MICUP.LIVE) */}
-          {isLinked && (
+          {/* Show Code & Instructions Card (ONLY IF PARTY IS ACTIVE) */}
+          {isPartyActive && (
             <div style={{
               background: 'rgba(18, 21, 30, 0.92)',
-              border: state.isPartyActive ? '2px solid rgba(255, 42, 95, 0.6)' : '2px solid rgba(245, 158, 11, 0.6)',
+              border: '2px solid rgba(255, 42, 95, 0.6)',
               borderRadius: '24px',
               padding: '24px 40px',
               display: 'flex',
               alignItems: 'center',
               gap: '32px',
-              boxShadow: state.isPartyActive
-                ? '0 20px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(255, 42, 95, 0.25)'
-                : '0 20px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(245, 158, 11, 0.25)',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(255, 42, 95, 0.25)',
               backdropFilter: 'blur(20px)'
             }}>
               <div style={{ background: '#fff', padding: '8px', borderRadius: '12px', display: 'flex' }}>
@@ -271,8 +267,8 @@ function StageApp() {
               <div style={{ textAlign: 'left' }}>
                 <div style={{
                   display: 'inline-block',
-                  background: state.isPartyActive ? 'rgba(255, 42, 95, 0.2)' : 'rgba(245, 158, 11, 0.2)',
-                  color: state.isPartyActive ? '#ff2a5f' : '#f59e0b',
+                  background: 'rgba(255, 42, 95, 0.2)',
+                  color: '#ff2a5f',
                   padding: '4px 10px',
                   borderRadius: '6px',
                   fontSize: '12px',
@@ -280,15 +276,13 @@ function StageApp() {
                   textTransform: 'uppercase',
                   letterSpacing: '1px'
                 }}>
-                  {state.isPartyActive ? '🎉 HOUSE PARTY MODE' : '🌐 MICUP.LIVE CLOUD'}
+                  🎉 MOBILE SINGER QUEUE
                 </div>
                 <div style={{ fontSize: '15px', color: '#cbd5e1', marginTop: '8px' }}>
-                  {state.isPartyActive ? 'Scan with your phone to pick songs & react!' : 'Scan to join the live singer rotation!'}
+                  Scan with your phone to pick songs & react!
                 </div>
                 <div style={{ fontSize: '44px', fontWeight: 900, letterSpacing: '0.08em', color: '#fff', margin: '4px 0' }}>
-                  CODE: <span style={{ color: state.isPartyActive ? '#06b6d4' : '#f59e0b' }}>
-                    {state.isPartyActive ? state.partyRoomCode : state.showCode}
-                  </span>
+                  CODE: <span style={{ color: '#06b6d4' }}>{state.partyRoomCode}</span>
                 </div>
               </div>
             </div>
@@ -469,8 +463,8 @@ function StageApp() {
         </div>
       )}
 
-      {/* Subtle Corner QR Code Badge during Active Playback (ONLY IF LINKED) */}
-      {isLinked && state.mediaType !== 'idle' && (
+      {/* Subtle Corner QR Code Badge during Active Playback (ONLY IF PARTY IS ACTIVE) */}
+      {isPartyActive && state.mediaType !== 'idle' && (
         <div style={{
           position: 'absolute',
           bottom: '24px',
@@ -499,16 +493,14 @@ function StageApp() {
             <div style={{
               fontSize: '10px',
               fontWeight: 800,
-              color: state.isPartyActive ? '#ff2a5f' : '#f59e0b',
+              color: '#ff2a5f',
               textTransform: 'uppercase',
               letterSpacing: '0.08em'
             }}>
-              {state.isPartyActive ? 'PARTY QUEUE' : 'JOIN THE SHOW'}
+              PARTY QUEUE
             </div>
             <div style={{ fontSize: '13px', fontWeight: 800, color: '#fff' }}>
-              CODE: <span style={{ color: state.isPartyActive ? '#06b6d4' : '#f59e0b' }}>
-                {state.isPartyActive ? state.partyRoomCode : state.showCode}
-              </span>
+              CODE: <span style={{ color: '#06b6d4' }}>{state.partyRoomCode}</span>
             </div>
           </div>
         </div>

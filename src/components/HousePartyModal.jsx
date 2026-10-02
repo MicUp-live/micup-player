@@ -96,7 +96,7 @@ export function HousePartyModal({ isOpen, onClose }) {
                 House Party Mode (P2P)
               </h2>
               <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                Direct WebRTC DataChannel connection via VDO.Ninja (Zero Cloud Relay)
+                Mobile room: friends can scan from any device (cellular, 5G, or Wi-Fi)
               </div>
             </div>
           </div>
@@ -135,10 +135,10 @@ export function HousePartyModal({ isOpen, onClose }) {
                 lineHeight: '1.5',
                 color: 'var(--text-secondary)'
               }}>
-                <strong style={{ color: 'var(--neon-coral)' }}>🛋️ Host Karaoke for Friends on Your Home Wi-Fi:</strong>
+                <strong style={{ color: 'var(--neon-coral)' }}>🛋️ Mobile Song Requests & Reactions:</strong>
                 <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
-                  <li>Guests scan a QR code on the TV or phone to join.</li>
-                  <li>Anyone can search YouTube / local files, queue songs, and adjust key.</li>
+                  <li>Guests scan the QR code on their phone (works on any network — cellular 5G or Wi-Fi).</li>
+                  <li>Anyone can search YouTube, request songs, and preset their key.</li>
                   <li>Guests get a live <strong>Crowd Soundboard</strong> (airhorn, applause, rimshot) that blasts out your living room speakers!</li>
                 </ul>
               </div>
@@ -189,7 +189,7 @@ export function HousePartyModal({ isOpen, onClose }) {
                   boxShadow: '0 4px 16px rgba(255, 42, 95, 0.4)'
                 }}
               >
-                {isStarting ? 'CONNECTING TO VDO.NINJA...' : '🎉 START HOUSE PARTY'}
+                {isStarting ? 'CONNECTING ROOM...' : '🎉 START HOUSE PARTY'}
               </button>
             </div>
           ) : (

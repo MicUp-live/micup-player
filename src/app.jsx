@@ -5,9 +5,7 @@ import { TransportBar } from './components/TransportBar.jsx';
 import { QueuePanel } from './components/QueuePanel.jsx';
 import { LibraryModal } from './components/LibraryModal.jsx';
 import { SoundPadsDrawer } from './components/SoundPadsDrawer.jsx';
-import { CloudSyncModal } from './components/CloudSyncModal.jsx';
 import { HousePartyModal } from './components/HousePartyModal.jsx';
-import { cloudQueueClient } from './engine/sync/cloud-queue-client.js';
 
 import {
   currentTrack,
@@ -19,12 +17,10 @@ import {
   queue,
   upNextSinger,
   autoApplause,
-  showCode,
-  isCloudLinked,
   isSecondScreenConnected
 } from './state/player-state.js';
 
-import { isPartyActive, partyRoomCode, broadcastCurrentPartyQueue } from './state/party-state.js';
+import { isPartyActive, partyRoomCode, broadcastCurrentPartyQueue, startPartyHost } from './state/party-state.js';
 
 import { CDGRenderer } from './engine/cdg/cdg-renderer.js';
 import { audioEngine } from './engine/audio/audio-engine.js';
@@ -38,7 +34,6 @@ import { saveShowStateToCookie, loadShowStateFromCookie } from './state/show-per
 export function App() {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isPadsOpen, setIsPadsOpen] = useState(false);
-  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
   const [isPartyModalOpen, setIsPartyModalOpen] = useState(false);
 
   const canvasRef = useRef(null);
@@ -61,27 +56,14 @@ export function App() {
         if (Array.isArray(saved.queue) && saved.queue.length > 0) {
           queue.value = saved.queue;
         }
-        if (saved.showCode) {
-          showCode.value = saved.showCode;
-        }
         if (saved.autoApplause !== undefined) {
           autoApplause.value = Boolean(saved.autoApplause);
         }
-        if (saved.isPartyActive !== undefined) {
-          isPartyActive.value = Boolean(saved.isPartyActive);
-        }
-        if (saved.partyRoomCode) {
+        if (saved.isPartyActive && saved.partyRoomCode) {
+          isPartyActive.value = true;
           partyRoomCode.value = saved.partyRoomCode;
-        }
-        if (saved.isCloudLinked && saved.showCode) {
-          isCloudLinked.value = true;
-          cloudQueueClient.startPolling({
-            eventId: saved.showCode,
-            libraryStore,
-            onUpdate: (activeQueue) => {
-              queue.value = activeQueue;
-              isCloudLinked.value = true;
-            }
+          startPartyHost(saved.partyRoomCode).catch((err) => {
+            console.warn('Failed to auto-resume party host on page reload:', err);
           });
         }
       }
@@ -94,16 +76,12 @@ export function App() {
   useEffect(() => {
     saveShowStateToCookie({
       queue: queue.value,
-      showCode: showCode.value,
-      isCloudLinked: isCloudLinked.value,
       autoApplause: autoApplause.value,
       isPartyActive: isPartyActive.value,
       partyRoomCode: partyRoomCode.value
     });
   }, [
     queue.value,
-    showCode.value,
-    isCloudLinked.value,
     autoApplause.value,
     isPartyActive.value,
     partyRoomCode.value
@@ -123,8 +101,6 @@ export function App() {
         semitones: semitones.value,
         isPlaying: isPlaying.value,
         upNextSinger: current ? (queue.value[1] || null) : (queue.value[0] || null),
-        showCode: showCode.value,
-        isCloudLinked: isCloudLinked.value,
         isPartyActive: isPartyActive.value,
         partyRoomCode: partyRoomCode.value
       });
@@ -229,8 +205,6 @@ export function App() {
           semitones: targetSemitones,
           isPlaying: true,
           upNextSinger: queue.value[1] || null,
-          showCode: showCode.value,
-          isCloudLinked: isCloudLinked.value,
           isPartyActive: isPartyActive.value,
           partyRoomCode: partyRoomCode.value
         });
@@ -280,8 +254,6 @@ export function App() {
           semitones: targetSemitones,
           isPlaying: true,
           upNextSinger: queue.value[1] || null,
-          showCode: showCode.value,
-          isCloudLinked: isCloudLinked.value,
           isPartyActive: isPartyActive.value,
           partyRoomCode: partyRoomCode.value
         });
@@ -305,8 +277,6 @@ export function App() {
           semitones: targetSemitones,
           isPlaying: true,
           upNextSinger: queue.value[1] || null,
-          showCode: showCode.value,
-          isCloudLinked: isCloudLinked.value,
           isPartyActive: isPartyActive.value,
           partyRoomCode: partyRoomCode.value
         });
@@ -419,12 +389,6 @@ export function App() {
       soundPads.play('applause');
     }
 
-    // Notify MicUp.live cloud backend if linked
-    const finishedSinger = queue.value.length > 0 ? queue.value[0] : null;
-    if (finishedSinger && finishedSinger.id) {
-      cloudQueueClient.updateStatus(finishedSinger.id, 'completed');
-    }
-
     // Stop current track
     if (currentTrack.value?.type === 'youtube') {
       youtubeControllerRef.current?.stop();
@@ -451,8 +415,6 @@ export function App() {
       singerName: null,
       isPlaying: false,
       upNextSinger: queue.value[0] || null,
-      showCode: showCode.value,
-      isCloudLinked: isCloudLinked.value,
       isPartyActive: isPartyActive.value,
       partyRoomCode: partyRoomCode.value
     });
@@ -520,20 +482,18 @@ export function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [semitones.value, isPlaying.value, currentTrack.value]);
 
-  // Broadcast party queue and stage updates whenever links or queue change
+  // Broadcast party queue and stage updates whenever party or queue changes
   useEffect(() => {
     if (isPartyActive.value) {
       broadcastCurrentPartyQueue();
     }
     secondScreen.sendPartyState(isPartyActive.value, partyRoomCode.value);
     secondScreen.sendState({
-      showCode: showCode.value,
-      isCloudLinked: isCloudLinked.value,
       isPartyActive: isPartyActive.value,
       partyRoomCode: partyRoomCode.value,
       upNextSinger: currentTrack.value ? (queue.value[1] || null) : (queue.value[0] || null)
     });
-  }, [queue.value, currentTrack.value, isPartyActive.value, partyRoomCode.value, isCloudLinked.value, showCode.value]);
+  }, [queue.value, currentTrack.value, isPartyActive.value, partyRoomCode.value]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -549,7 +509,6 @@ export function App() {
       <Header
         onOpenLibrary={() => setIsLibraryOpen(true)}
         onOpenPads={() => setIsPadsOpen(!isPadsOpen)}
-        onOpenCloud={() => setIsCloudModalOpen(true)}
         onOpenParty={() => setIsPartyModalOpen(true)}
       />
 
@@ -619,11 +578,6 @@ export function App() {
       <SoundPadsDrawer
         isOpen={isPadsOpen}
         onClose={() => setIsPadsOpen(false)}
-      />
-
-      <CloudSyncModal
-        isOpen={isCloudModalOpen}
-        onClose={() => setIsCloudModalOpen(false)}
       />
 
       <HousePartyModal

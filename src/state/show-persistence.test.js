@@ -47,8 +47,6 @@ test('compactShowState extracts essential show data without bloated object handl
 
   const compacted = compactShowState({
     queue: rawQueue,
-    showCode: 'STAGE-9',
-    isCloudLinked: true,
     autoApplause: false,
     isPartyActive: true,
     partyRoomCode: 'P2P77'
@@ -59,8 +57,6 @@ test('compactShowState extracts essential show data without bloated object handl
   assert.equal(compacted.queue[0].videoId, '9Lxm0iSnKNc');
   assert.equal(compacted.queue[0].trackMatch, undefined);
   assert.equal(compacted.queue[0].handle, undefined);
-  assert.equal(compacted.showCode, 'STAGE-9');
-  assert.equal(compacted.isCloudLinked, true);
   assert.equal(compacted.autoApplause, false);
   assert.equal(compacted.isPartyActive, true);
   assert.equal(compacted.partyRoomCode, 'P2P77');
@@ -71,27 +67,26 @@ test('serializeShowState and deserializeShowState round-trip successfully', () =
     queue: [
       { id: '1', singerName: 'Bob', title: 'Yesterday', artist: 'Beatles', semitones: 0 }
     ],
-    showCode: 'BEATLES1',
-    isCloudLinked: true,
-    autoApplause: true
+    autoApplause: true,
+    isPartyActive: true,
+    partyRoomCode: 'ROOM1'
   };
 
   const serialized = serializeShowState(original);
   assert.ok(typeof serialized === 'string');
 
   const restored = deserializeShowState(serialized);
-  assert.equal(restored.showCode, 'BEATLES1');
   assert.equal(restored.queue.length, 1);
   assert.equal(restored.queue[0].singerName, 'Bob');
+  assert.equal(restored.partyRoomCode, 'ROOM1');
 });
 
 test('saveShowStateToCookie and loadShowStateFromCookie use document.cookie when available', () => {
   const fakeDoc = { cookie: '' };
   const state = {
     queue: [{ id: '10', singerName: 'Dana', title: 'Hello', artist: 'Adele', semitones: -1 }],
-    showCode: 'SHOW99',
     autoApplause: true,
-    isCloudLinked: false
+    isPartyActive: false
   };
 
   saveShowStateToCookie(state, fakeDoc);
@@ -99,7 +94,6 @@ test('saveShowStateToCookie and loadShowStateFromCookie use document.cookie when
 
   const loaded = loadShowStateFromCookie(fakeDoc);
   assert.ok(loaded);
-  assert.equal(loaded.showCode, 'SHOW99');
   assert.equal(loaded.queue.length, 1);
   assert.equal(loaded.queue[0].singerName, 'Dana');
   assert.equal(loaded.queue[0].semitones, -1);

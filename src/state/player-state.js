@@ -43,9 +43,7 @@ export const queue = signal([
   }
 ]);
 
-export const activeTab = signal('queue'); // 'queue' | 'library' | 'pads' | 'cloud'
-export const showCode = signal('MICUP-LIVE');
-export const isCloudLinked = signal(false);
+export const activeTab = signal('queue'); // 'queue' | 'library' | 'pads'
 export const isSecondScreenConnected = signal(false);
 export const bgmActive = signal(false);
 export const autoApplause = signal(true);

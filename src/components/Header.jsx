@@ -1,8 +1,8 @@
 import { secondScreen } from '../engine/display/second-screen.js';
-import { activeTab, isSecondScreenConnected, isCloudLinked, showCode } from '../state/player-state.js';
+import { activeTab, isSecondScreenConnected } from '../state/player-state.js';
 import { isPartyActive, partyRoomCode } from '../state/party-state.js';
 
-export function Header({ onOpenLibrary, onOpenPads, onOpenCloud, onOpenParty }) {
+export function Header({ onOpenLibrary, onOpenPads, onOpenParty }) {
   const handleOpenSecondScreen = async () => {
     await secondScreen.openStageWindow();
   };
@@ -72,39 +72,49 @@ export function Header({ onOpenLibrary, onOpenPads, onOpenCloud, onOpenParty }) 
         </div>
       </div>
 
-      {/* Center Show Code / Cloud Status */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '12px',
-        background: 'rgba(9, 10, 15, 0.6)',
-        padding: '6px 14px',
-        borderRadius: 'var(--radius-full)',
-        border: '1px solid var(--border-subtle)'
-      }}>
+      {/* Center Status / Party Room */}
+      {isPartyActive.value ? (
         <div style={{
-          width: '8px',
-          height: '8px',
-          borderRadius: '50%',
-          backgroundColor: isCloudLinked.value ? 'var(--neon-emerald)' : 'var(--neon-dim)'
-        }} />
-        <span className="font-mono" style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-          SHOW: <strong style={{ color: '#fff' }}>{showCode.value}</strong>
-        </span>
-        <button
-          onClick={onOpenCloud}
-          style={{
-            background: 'none',
-            color: 'var(--neon-coral)',
-            fontSize: '11px',
-            fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          background: 'rgba(255, 42, 95, 0.12)',
+          padding: '6px 16px',
+          borderRadius: 'var(--radius-full)',
+          border: '1px solid rgba(255, 42, 95, 0.4)',
+          boxShadow: '0 0 15px rgba(255, 42, 95, 0.2)'
+        }}>
+          <span style={{ fontSize: '14px' }}>🎉</span>
+          <span className="font-mono" style={{ fontSize: '12px', color: '#fff', fontWeight: 700 }}>
+            ROOM: <strong style={{ color: 'var(--neon-coral)' }}>{partyRoomCode.value}</strong>
+          </span>
+          <span style={{
+            fontSize: '10px',
+            color: 'var(--neon-emerald)',
+            background: 'rgba(16, 185, 129, 0.15)',
             padding: '2px 6px',
-            borderRadius: '4px'
-          }}
-        >
-          {isCloudLinked.value ? 'LINKED' : 'LINK SHOW'}
-        </button>
-      </div>
+            borderRadius: '4px',
+            fontWeight: 700
+          }}>
+            LIVE
+          </span>
+        </div>
+      ) : (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          background: 'rgba(9, 10, 15, 0.5)',
+          padding: '6px 14px',
+          borderRadius: 'var(--radius-full)',
+          border: '1px solid var(--border-subtle)'
+        }}>
+          <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'var(--neon-emerald)' }} />
+          <span className="font-mono" style={{ fontSize: '11px', color: 'var(--text-muted)', letterSpacing: '0.04em' }}>
+            STANDALONE PLAYER
+          </span>
+        </div>
+      )}
 
       {/* Action Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

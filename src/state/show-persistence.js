@@ -46,8 +46,6 @@ export function compactShowState(state = {}) {
 
   return {
     queue,
-    showCode: state.showCode || 'MICUP-LIVE',
-    isCloudLinked: Boolean(state.isCloudLinked),
     autoApplause: state.autoApplause !== undefined ? Boolean(state.autoApplause) : true,
     isPartyActive: Boolean(state.isPartyActive),
     partyRoomCode: state.partyRoomCode || ''
