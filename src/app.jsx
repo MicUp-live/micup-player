@@ -5,6 +5,8 @@ import { TransportBar } from './components/TransportBar.jsx';
 import { QueuePanel } from './components/QueuePanel.jsx';
 import { LibraryModal } from './components/LibraryModal.jsx';
 import { SoundPadsDrawer } from './components/SoundPadsDrawer.jsx';
+import { CloudSyncModal } from './components/CloudSyncModal.jsx';
+import { cloudQueueClient } from './engine/sync/cloud-queue-client.js';
 
 import {
   currentTrack,
@@ -29,6 +31,7 @@ import { soundPads } from './engine/sfx/sound-pads.js';
 export function App() {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isPadsOpen, setIsPadsOpen] = useState(false);
+  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
 
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
@@ -191,6 +194,12 @@ export function App() {
       soundPads.play('applause');
     }
 
+    // Notify MicUp.live cloud backend if linked
+    const finishedSinger = queue.value.length > 0 ? queue.value[0] : null;
+    if (finishedSinger && finishedSinger.id) {
+      cloudQueueClient.updateStatus(finishedSinger.id, 'completed');
+    }
+
     // Stop current
     const mediaEl = currentTrack.value?.type === 'video' ? videoRef.current : audioRef.current;
     if (mediaEl) {
@@ -288,7 +297,7 @@ export function App() {
       <Header
         onOpenLibrary={() => setIsLibraryOpen(true)}
         onOpenPads={() => setIsPadsOpen(!isPadsOpen)}
-        onOpenCloud={() => alert('MicUp.live show linking: Enter your Event ID to sync incoming requests directly to the queue.')}
+        onOpenCloud={() => setIsCloudModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -351,6 +360,11 @@ export function App() {
       <SoundPadsDrawer
         isOpen={isPadsOpen}
         onClose={() => setIsPadsOpen(false)}
+      />
+
+      <CloudSyncModal
+        isOpen={isCloudModalOpen}
+        onClose={() => setIsCloudModalOpen(false)}
       />
     </div>
   );
