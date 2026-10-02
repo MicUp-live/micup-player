@@ -94,6 +94,16 @@ export class SecondScreenController {
       payload: { text, durationMs }
     });
   }
+
+  /**
+   * Broadcast party room state to stage window
+   */
+  sendPartyState(isPartyActive, partyRoomCode) {
+    this.channel.postMessage({
+      type: 'PARTY_STATE',
+      payload: { isPartyActive, partyRoomCode }
+    });
+  }
 }
 
 export const secondScreen = new SecondScreenController();

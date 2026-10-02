@@ -2,6 +2,7 @@ import { render } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { CDGRenderer, CDG_WIDTH, CDG_HEIGHT } from './engine/cdg/cdg-renderer.js';
 import { STAGE_CHANNEL_NAME } from './engine/display/second-screen.js';
+import { QRCodeView } from './components/QRCodeView.jsx';
 
 function StageApp() {
   const [state, setState] = useState({
@@ -14,7 +15,9 @@ function StageApp() {
     currentTime: 0,
     duration: 0,
     upNextSinger: null,
-    showCode: 'MICUP-LIVE'
+    showCode: 'MICUP-LIVE',
+    isPartyActive: false,
+    partyRoomCode: ''
   });
 
   const [announcement, setAnnouncement] = useState(null);
@@ -50,6 +53,12 @@ function StageApp() {
       } else if (type === 'ANNOUNCEMENT') {
         setAnnouncement(payload.text);
         setTimeout(() => setAnnouncement(null), payload.durationMs || 5000);
+      } else if (type === 'PARTY_STATE') {
+        setState(prev => ({
+          ...prev,
+          isPartyActive: Boolean(payload.isPartyActive),
+          partyRoomCode: payload.partyRoomCode || ''
+        }));
       }
     };
 
@@ -151,26 +160,60 @@ function StageApp() {
           </p>
 
           {/* Show Code & Instructions Card */}
-          <div style={{
-            background: 'rgba(18, 21, 30, 0.85)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            borderRadius: '24px',
-            padding: '24px 48px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '32px',
-            boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6)',
-            backdropFilter: 'blur(20px)'
-          }}>
-            <div>
-              <div style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.15em', color: '#f59e0b', fontWeight: 700 }}>
-                Join At MicUp.live
+          {state.isPartyActive ? (
+            <div style={{
+              background: 'rgba(18, 21, 30, 0.92)',
+              border: '2px solid rgba(255, 42, 95, 0.6)',
+              borderRadius: '24px',
+              padding: '24px 40px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '32px',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(255, 42, 95, 0.25)',
+              backdropFilter: 'blur(20px)'
+            }}>
+              <div style={{ background: '#fff', padding: '8px', borderRadius: '12px', display: 'flex' }}>
+                <QRCodeView
+                  text={`${(typeof window !== 'undefined' ? window.location.origin + (import.meta.env?.BASE_URL || '/') : '').replace(/\/$/, '')}/party.html?room=${state.partyRoomCode}`}
+                  size={150}
+                  color="#090a0f"
+                  bgColor="#ffffff"
+                />
               </div>
-              <div style={{ fontSize: '38px', fontWeight: 900, letterSpacing: '0.08em', color: '#fff', margin: '4px 0' }}>
-                {state.showCode}
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ display: 'inline-block', background: 'rgba(255, 42, 95, 0.2)', color: '#ff2a5f', padding: '4px 10px', borderRadius: '6px', fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>
+                  🎉 HOUSE PARTY MODE
+                </div>
+                <div style={{ fontSize: '15px', color: '#cbd5e1', marginTop: '8px' }}>
+                  Scan with your phone to pick songs & react!
+                </div>
+                <div style={{ fontSize: '44px', fontWeight: 900, letterSpacing: '0.08em', color: '#fff', margin: '4px 0' }}>
+                  CODE: <span style={{ color: '#06b6d4' }}>{state.partyRoomCode}</span>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div style={{
+              background: 'rgba(18, 21, 30, 0.85)',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '24px',
+              padding: '24px 48px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '32px',
+              boxShadow: '0 20px 60px rgba(0, 0, 0, 0.6)',
+              backdropFilter: 'blur(20px)'
+            }}>
+              <div>
+                <div style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.15em', color: '#f59e0b', fontWeight: 700 }}>
+                  Join At MicUp.live
+                </div>
+                <div style={{ fontSize: '38px', fontWeight: 900, letterSpacing: '0.08em', color: '#fff', margin: '4px 0' }}>
+                  {state.showCode}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Up Next Singer Card */}
           {state.upNextSinger && (

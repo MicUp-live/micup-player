@@ -6,6 +6,7 @@ import { QueuePanel } from './components/QueuePanel.jsx';
 import { LibraryModal } from './components/LibraryModal.jsx';
 import { SoundPadsDrawer } from './components/SoundPadsDrawer.jsx';
 import { CloudSyncModal } from './components/CloudSyncModal.jsx';
+import { HousePartyModal } from './components/HousePartyModal.jsx';
 import { cloudQueueClient } from './engine/sync/cloud-queue-client.js';
 
 import {
@@ -21,6 +22,8 @@ import {
   showCode
 } from './state/player-state.js';
 
+import { isPartyActive, partyRoomCode, broadcastCurrentPartyQueue } from './state/party-state.js';
+
 import { CDGRenderer } from './engine/cdg/cdg-renderer.js';
 import { audioEngine } from './engine/audio/audio-engine.js';
 import { mediaLoader } from './engine/media/media-loader.js';
@@ -32,6 +35,7 @@ export function App() {
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isPadsOpen, setIsPadsOpen] = useState(false);
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
+  const [isPartyModalOpen, setIsPartyModalOpen] = useState(false);
 
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
@@ -313,6 +317,14 @@ export function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [semitones.value, isPlaying.value, currentTrack.value]);
 
+  // Broadcast party queue and stage party state updates
+  useEffect(() => {
+    if (isPartyActive.value) {
+      broadcastCurrentPartyQueue();
+    }
+    secondScreen.sendPartyState(isPartyActive.value, partyRoomCode.value);
+  }, [queue.value, currentTrack.value, isPartyActive.value, partyRoomCode.value]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       {/* Hidden Audio Element for CD+G tracks */}
@@ -328,6 +340,7 @@ export function App() {
         onOpenLibrary={() => setIsLibraryOpen(true)}
         onOpenPads={() => setIsPadsOpen(!isPadsOpen)}
         onOpenCloud={() => setIsCloudModalOpen(true)}
+        onOpenParty={() => setIsPartyModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -395,6 +408,11 @@ export function App() {
       <CloudSyncModal
         isOpen={isCloudModalOpen}
         onClose={() => setIsCloudModalOpen(false)}
+      />
+
+      <HousePartyModal
+        isOpen={isPartyModalOpen}
+        onClose={() => setIsPartyModalOpen(false)}
       />
     </div>
   );

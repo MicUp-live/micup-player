@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         main: resolve(import.meta.dirname, 'index.html'),
         stage: resolve(import.meta.dirname, 'stage.html'),
+        party: resolve(import.meta.dirname, 'party.html'),
       }
     }
   },

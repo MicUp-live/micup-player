@@ -1,7 +1,8 @@
 import { secondScreen } from '../engine/display/second-screen.js';
 import { activeTab, isSecondScreenConnected, isCloudLinked, showCode } from '../state/player-state.js';
+import { isPartyActive, partyRoomCode } from '../state/party-state.js';
 
-export function Header({ onOpenLibrary, onOpenPads, onOpenCloud }) {
+export function Header({ onOpenLibrary, onOpenPads, onOpenCloud, onOpenParty }) {
   const handleOpenSecondScreen = async () => {
     await secondScreen.openStageWindow();
   };
@@ -174,6 +175,29 @@ export function Header({ onOpenLibrary, onOpenPads, onOpenCloud }) {
             <rect width="7" height="7" x="3" y="14" rx="1"/>
           </svg>
           SFX Pads
+        </button>
+
+        {/* House Party Button */}
+        <button
+          onClick={onOpenParty}
+          style={{
+            height: '38px',
+            padding: '0 14px',
+            borderRadius: 'var(--radius-md)',
+            background: isPartyActive.value ? 'rgba(255, 42, 95, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+            border: isPartyActive.value ? '1px solid var(--neon-coral)' : '1px solid var(--border-medium)',
+            color: isPartyActive.value ? 'var(--neon-coral)' : '#fff',
+            fontSize: '13px',
+            fontWeight: 700,
+            gap: '8px',
+            boxShadow: isPartyActive.value ? '0 0 14px rgba(255, 42, 95, 0.35)' : 'none',
+            display: 'flex',
+            alignItems: 'center'
+          }}
+          title="Open P2P House Party mode for friends on Wi-Fi"
+        >
+          <span>🎉</span>
+          {isPartyActive.value ? `Party: ${partyRoomCode.value}` : 'House Party'}
         </button>
 
         {/* Fullscreen Button */}
