@@ -21,8 +21,9 @@ export function HousePartyModal({ isOpen, onClose }) {
   const peers = connectedPeersCount.value;
   const logs = partyActivityLogs.value;
 
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin + (import.meta.env?.BASE_URL || '/') : '';
-  const partyUrl = active ? `${baseUrl.replace(/\/$/, '')}/party.html?room=${room}` : '';
+  const partyUrl = (active && typeof window !== 'undefined' && window.location)
+    ? new URL(`party.html?room=${encodeURIComponent(room)}`, window.location.href).href
+    : '';
 
   const handleStart = async () => {
     setIsStarting(true);

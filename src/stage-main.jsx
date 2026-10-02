@@ -174,7 +174,7 @@ function StageApp() {
             }}>
               <div style={{ background: '#fff', padding: '8px', borderRadius: '12px', display: 'flex' }}>
                 <QRCodeView
-                  text={`${(typeof window !== 'undefined' ? window.location.origin + (import.meta.env?.BASE_URL || '/') : '').replace(/\/$/, '')}/party.html?room=${state.partyRoomCode}`}
+                  text={typeof window !== 'undefined' && window.location ? new URL(`party.html?room=${encodeURIComponent(state.partyRoomCode)}`, window.location.href).href : ''}
                   size={150}
                   color="#090a0f"
                   bgColor="#ffffff"

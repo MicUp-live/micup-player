@@ -24,9 +24,7 @@ export class VDONinjaTransport {
       return window.VDONinjaSDK;
     }
 
-    const baseUrl = import.meta.env?.BASE_URL || './';
-    const localPath = baseUrl.endsWith('/') ? `${baseUrl}vdoninja-sdk.min.js` : `${baseUrl}/vdoninja-sdk.min.js`;
-    const localUrl = window.location ? new URL(localPath, window.location.href).href : '/vdoninja-sdk.min.js';
+    const localUrl = window.location ? new URL('vdoninja-sdk.min.js', window.location.href).href : '/vdoninja-sdk.min.js';
     const cdnUrl = 'https://sdk.vdo.ninja/vdoninja-sdk.min.js';
 
     const loadScript = (src) => new Promise((resolve, reject) => {

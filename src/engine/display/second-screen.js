@@ -48,9 +48,9 @@ export class SecondScreenController {
       }
     }
 
-    const baseUrl = import.meta.env?.BASE_URL || './';
-    const stagePath = baseUrl.endsWith('/') ? `${baseUrl}stage.html` : `${baseUrl}/stage.html`;
-    const stageUrl = typeof window !== 'undefined' && window.location ? new URL(stagePath, window.location.href).href : '/stage.html';
+    const stageUrl = typeof window !== 'undefined' && window.location
+      ? new URL('stage.html', window.location.href).href
+      : '/stage.html';
 
     this.stageWindow = window.open(stageUrl, 'MicUpStageWindow', windowFeatures);
   }

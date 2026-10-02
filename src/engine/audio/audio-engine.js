@@ -44,9 +44,9 @@ export class AudioEngine {
 
     // Load Pitch Shifter AudioWorklet
     try {
-      const baseUrl = import.meta.env?.BASE_URL || './';
-      const workletPath = baseUrl.endsWith('/') ? `${baseUrl}pitch-shifter-worklet.js` : `${baseUrl}/pitch-shifter-worklet.js`;
-      const workletUrl = typeof window !== 'undefined' && window.location ? new URL(workletPath, window.location.href).href : '/pitch-shifter-worklet.js';
+      const workletUrl = typeof window !== 'undefined' && window.location
+        ? new URL('pitch-shifter-worklet.js', window.location.href).href
+        : '/pitch-shifter-worklet.js';
       await this.ctx.audioWorklet.addModule(workletUrl);
       this.pitchNode = new AudioWorkletNode(this.ctx, 'pitch-shifter-processor');
       this.pitchNode.connect(this.masterGain);
