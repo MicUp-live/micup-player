@@ -152,6 +152,16 @@ export function App() {
     };
   }, []);
 
+  // Sync sound effects routing with second screen audio target
+  useEffect(() => {
+    soundPads.isMuted = isSecondScreenConnected.value && audioOutputTarget.value === 'stage';
+    soundPads.onPlay = (padId) => {
+      if (isSecondScreenConnected.value && audioOutputTarget.value === 'stage') {
+        secondScreen.sendSfx(padId);
+      }
+    };
+  }, [isSecondScreenConnected.value, audioOutputTarget.value]);
+
   // Initialize CDG Renderer on canvas mount
   useEffect(() => {
     if (canvasRef.current && !cdgRendererRef.current) {

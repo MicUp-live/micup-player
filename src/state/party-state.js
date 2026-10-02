@@ -70,13 +70,17 @@ export async function startPartyHost(preferredCode = null, customTransport = nul
       if (sfx && sfx.pad) {
         soundPads.play(sfx.pad).catch(console.error);
         const padEmoji = {
-          airhorn: '🎺',
+          airhorn: '📯',
           applause: '👏',
           drumroll: '🥁',
           rimshot: '💥',
           laughter: '😂',
           laugh: '😂',
-          scratch: '📀'
+          scratch: '🎧',
+          crickets: '🦗',
+          fail: '🎺',
+          trombone: '🎺',
+          boo: '👎'
         }[sfx.pad] || '🔊';
 
         addPartyLog(`${padEmoji} ${sfx.sender || 'Someone'} triggered ${sfx.pad}`);

@@ -1,25 +1,175 @@
 /**
  * Sound FX Pads and Atmosphere Engine
  * 
- * Provides instant sound triggers (Applause, Air Horn, Drum Roll, Rimshot, Laugh, Scratch).
- * Synthesizes realistic audio using Web Audio API nodes so pads work 100% offline
- * with zero external asset dependencies.
+ * Provides instant sound triggers:
+ * Applause, Air Horn, Drum Roll, Rimshot, Laughter, Scratch, Crickets, Sad Trombone/Fail, Boo.
+ * 
+ * Uses studio-grade real audio samples with zero-latency buffer caching,
+ * with resilient offline synthetic Web Audio synthesis fallback.
  */
 
 import { audioEngine } from '../audio/audio-engine.js';
 
+export const SOUND_DEFINITIONS = {
+  applause: { file: 'applause.mp3', label: 'Applause', icon: '👏', gain: 0.9 },
+  airhorn: { file: 'airhorn.mp3', label: 'Air Horn', icon: '📯', gain: 0.85 },
+  drumroll: { file: 'drumroll.mp3', label: 'Drum Roll', icon: '🥁', gain: 0.9 },
+  rimshot: { file: 'rimshot.mp3', label: 'Rimshot', icon: '💥', gain: 0.95 },
+  laughter: { file: 'laughter.mp3', label: 'Laughter', icon: '😂', gain: 0.85 },
+  scratch: { file: 'scratch.wav', label: 'Scratch', icon: '🎧', gain: 0.85 },
+  crickets: { file: 'crickets.mp3', label: 'Crickets', icon: '🦗', gain: 0.8 },
+  fail: { file: 'fail.mp3', label: 'Sad Trombone', icon: '🎺', gain: 0.85 },
+  boo: { file: 'boo.mp3', label: 'Crowd Boo', icon: '👎', gain: 0.85 }
+};
+
+export const SOUND_ALIASES = {
+  laugh: 'laughter',
+  trombone: 'fail',
+  'sad-trombone': 'fail',
+  'sad_trombone': 'fail',
+  booing: 'boo'
+};
+
+/**
+ * Resolves static SFX asset URL honoring Vite BASE_PATH and deployment subdirectories
+ */
+export function getSfxUrl(filename) {
+  try {
+    const base = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || './';
+    const baseUrl = (typeof document !== 'undefined' && document.baseURI)
+      ? document.baseURI
+      : (typeof window !== 'undefined' && window.location ? window.location.href : 'http://localhost/');
+    const resolvedBase = new URL(base, baseUrl);
+    return new URL(`sfx/${filename}`, resolvedBase).href;
+  } catch {
+    return `sfx/${filename}`;
+  }
+}
+
 export class SoundPads {
   constructor() {
+    this.bufferCache = new Map();
+    this.loadingPromises = new Map();
     this.customSounds = {};
+    this.onPlay = null;
+    this.isMuted = false;
   }
 
-  async play(padId) {
+  /**
+   * Resolve pad alias or canonical key
+   */
+  resolveKey(padId) {
+    if (!padId) return null;
+    const clean = String(padId).trim().toLowerCase();
+    return SOUND_ALIASES[clean] || clean;
+  }
+
+  /**
+   * Preload an audio sample buffer into Web Audio memory
+   */
+  async loadBuffer(ctx, key) {
+    if (this.bufferCache.has(key)) {
+      return this.bufferCache.get(key);
+    }
+    if (this.loadingPromises.has(key)) {
+      return this.loadingPromises.get(key);
+    }
+
+    const def = SOUND_DEFINITIONS[key];
+    if (!def) return null;
+
+    const promise = (async () => {
+      try {
+        const url = getSfxUrl(def.file);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+        const arrayBuffer = await res.arrayBuffer();
+        // Defensive slice in case older implementations detach the buffer
+        const audioBuffer = await ctx.decodeAudioData(arrayBuffer.slice(0));
+        this.bufferCache.set(key, audioBuffer);
+        return audioBuffer;
+      } catch (err) {
+        // Fall back quietly if asset fetch/decode fails (offline, test env, etc)
+        return null;
+      } finally {
+        this.loadingPromises.delete(key);
+      }
+    })();
+
+    this.loadingPromises.set(key, promise);
+    return promise;
+  }
+
+  /**
+   * Preload all sound pad buffers for instantaneous zero-latency triggers
+   */
+  async preloadAll() {
     if (typeof window === 'undefined') return;
+    try {
+      await audioEngine.init();
+      const ctx = audioEngine.ctx;
+      if (!ctx) return;
+      await Promise.all(
+        Object.keys(SOUND_DEFINITIONS).map(key => this.loadBuffer(ctx, key))
+      );
+    } catch {
+      // Ignore background preload errors
+    }
+  }
+
+  /**
+   * Play sound effect by ID (with instant multi-hit overlap and synthetic fallback)
+   */
+  async play(padId, options = {}) {
+    const key = this.resolveKey(padId);
+    if (!key) return;
+
+    // Notify listeners (e.g. stage screen sync)
+    this.onPlay?.(key);
+
+    if (this.isMuted && !options.force) return;
+    if (typeof window === 'undefined') return;
+
     await audioEngine.init();
     const ctx = audioEngine.ctx;
     if (!ctx) return;
 
-    switch (padId) {
+    let buffer = this.bufferCache.get(key);
+    if (!buffer) {
+      buffer = await this.loadBuffer(ctx, key);
+    }
+
+    if (buffer) {
+      this.playBuffer(ctx, buffer, key);
+    } else {
+      // Graceful fallback to synthetic audio generator
+      this.playSynthetic(ctx, key);
+    }
+  }
+
+  /**
+   * Plays a preloaded AudioBuffer through the master audio engine gain
+   */
+  playBuffer(ctx, buffer, key) {
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+
+    const def = SOUND_DEFINITIONS[key];
+    const gainNode = ctx.createGain();
+    const gainVal = def?.gain ?? 0.85;
+    gainNode.gain.setValueAtTime(gainVal, ctx.currentTime);
+
+    source.connect(gainNode);
+    gainNode.connect(audioEngine.masterGain || ctx.destination);
+
+    source.start(0);
+  }
+
+  /**
+   * Fallback: Synthetic sound generation if audio file is unavailable
+   */
+  playSynthetic(ctx, key) {
+    switch (key) {
       case 'applause':
         this.playApplause(ctx);
         break;
@@ -38,14 +188,20 @@ export class SoundPads {
       case 'scratch':
         this.playScratch(ctx);
         break;
+      case 'crickets':
+        this.playCrickets(ctx);
+        break;
+      case 'fail':
+        this.playFail(ctx);
+        break;
+      case 'boo':
+        this.playBoo(ctx);
+        break;
     }
   }
 
   // --- Synthetic Sound Generators ---
 
-  /**
-   * Generates white/pink noise buffer
-   */
   createNoiseBuffer(ctx, durationSec) {
     const bufferSize = ctx.sampleRate * durationSec;
     const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
@@ -56,16 +212,12 @@ export class SoundPads {
     return buffer;
   }
 
-  /**
-   * Crowd Applause: Filtered noise with multi-burst claps
-   */
   playApplause(ctx) {
     const now = ctx.currentTime;
     const duration = 3.5;
     const noise = ctx.createBufferSource();
     noise.buffer = this.createNoiseBuffer(ctx, duration);
 
-    // Bandpass filter for crowd clapping frequency (800Hz - 2500Hz)
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
     filter.frequency.setValueAtTime(1400, now);
@@ -79,18 +231,14 @@ export class SoundPads {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(audioEngine.masterGain);
+    gain.connect(audioEngine.masterGain || ctx.destination);
 
     noise.start(now);
     noise.stop(now + duration);
   }
 
-  /**
-   * Dancehall / Reggae Air Horn: Classic tri-tone multi-burst sound
-   */
   playAirHorn(ctx) {
     const now = ctx.currentTime;
-    // Classic air horn frequencies: Eb4 (~311Hz), G4 (~392Hz), Bb4 (~466Hz)
     const freqs = [311.13, 392.00, 466.16];
     const bursts = [0, 0.22, 0.44];
 
@@ -102,7 +250,6 @@ export class SoundPads {
         const osc = ctx.createOscillator();
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(f, burstStart);
-        // Slight pitch drop for authentic horn feel
         osc.frequency.exponentialRampToValueAtTime(f * 0.96, burstStart + burstLen);
 
         const gain = ctx.createGain();
@@ -110,7 +257,7 @@ export class SoundPads {
         gain.gain.exponentialRampToValueAtTime(0.001, burstStart + burstLen);
 
         osc.connect(gain);
-        gain.connect(audioEngine.masterGain);
+        gain.connect(audioEngine.masterGain || ctx.destination);
 
         osc.start(burstStart);
         osc.stop(burstStart + burstLen);
@@ -118,9 +265,6 @@ export class SoundPads {
     });
   }
 
-  /**
-   * Snare Drum Roll with crescendo
-   */
   playDrumRoll(ctx) {
     const now = ctx.currentTime;
     const duration = 2.0;
@@ -138,24 +282,19 @@ export class SoundPads {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(audioEngine.masterGain);
+    gain.connect(audioEngine.masterGain || ctx.destination);
 
     noise.start(now);
     noise.stop(now + duration);
 
-    // Final crash/hit
     setTimeout(() => {
       this.playRimshot(ctx);
     }, (duration - 0.05) * 1000);
   }
 
-  /**
-   * Rimshot: "Ba-dum-tss"
-   */
   playRimshot(ctx) {
     const now = ctx.currentTime;
 
-    // Drum hit (low sine punch)
     const osc = ctx.createOscillator();
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(160, now);
@@ -166,11 +305,10 @@ export class SoundPads {
     oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
 
     osc.connect(oscGain);
-    oscGain.connect(audioEngine.masterGain);
+    oscGain.connect(audioEngine.masterGain || ctx.destination);
     osc.start(now);
     osc.stop(now + 0.2);
 
-    // Cymbal crash / snap (filtered noise)
     const noise = ctx.createBufferSource();
     noise.buffer = this.createNoiseBuffer(ctx, 0.7);
 
@@ -184,14 +322,11 @@ export class SoundPads {
 
     noise.connect(cymbalFilter);
     cymbalFilter.connect(cymbalGain);
-    cymbalGain.connect(audioEngine.masterGain);
+    cymbalGain.connect(audioEngine.masterGain || ctx.destination);
     noise.start(now);
     noise.stop(now + 0.7);
   }
 
-  /**
-   * Laughter: Modulated pitch formant
-   */
   playLaughter(ctx) {
     const now = ctx.currentTime;
     const haCount = 6;
@@ -212,16 +347,13 @@ export class SoundPads {
 
       osc.connect(filter);
       filter.connect(gain);
-      gain.connect(audioEngine.masterGain);
+      gain.connect(audioEngine.masterGain || ctx.destination);
 
       osc.start(t);
       osc.stop(t + 0.15);
     }
   }
 
-  /**
-   * DJ Vinyl Scratch / Tape Rewind
-   */
   playScratch(ctx) {
     const now = ctx.currentTime;
     const duration = 0.45;
@@ -242,10 +374,91 @@ export class SoundPads {
 
     osc.connect(filter);
     filter.connect(gain);
-    gain.connect(audioEngine.masterGain);
+    gain.connect(audioEngine.masterGain || ctx.destination);
 
     osc.start(now);
     osc.stop(now + duration);
+  }
+
+  playCrickets(ctx) {
+    const now = ctx.currentTime;
+    for (let c = 0; c < 3; c++) {
+      const chirpStart = now + c * 0.6;
+      for (let p = 0; p < 4; p++) {
+        const pulseStart = chirpStart + p * 0.04;
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(4600 + (p % 2) * 200, pulseStart);
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.08, pulseStart);
+        gain.gain.exponentialRampToValueAtTime(0.001, pulseStart + 0.035);
+        osc.connect(gain);
+        gain.connect(audioEngine.masterGain || ctx.destination);
+        osc.start(pulseStart);
+        osc.stop(pulseStart + 0.04);
+      }
+    }
+  }
+
+  playFail(ctx) {
+    const now = ctx.currentTime;
+    const notes = [
+      { f: 293.66, dur: 0.35, delay: 0 },
+      { f: 277.18, dur: 0.35, delay: 0.4 },
+      { f: 261.63, dur: 0.35, delay: 0.8 },
+      { f: 246.94, dur: 1.2, delay: 1.2, slideTo: 220 }
+    ];
+
+    notes.forEach(n => {
+      const start = now + n.delay;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(n.f, start);
+      if (n.slideTo) {
+        osc.frequency.linearRampToValueAtTime(n.slideTo, start + n.dur);
+      }
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(800, start);
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.3, start);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + n.dur);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(audioEngine.masterGain || ctx.destination);
+
+      osc.start(start);
+      osc.stop(start + n.dur);
+    });
+  }
+
+  playBoo(ctx) {
+    const now = ctx.currentTime;
+    const duration = 2.5;
+    const noise = ctx.createBufferSource();
+    noise.buffer = this.createNoiseBuffer(ctx, duration);
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(280, now);
+    filter.frequency.linearRampToValueAtTime(200, now + duration);
+    filter.Q.setValueAtTime(2.0, now);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.01, now);
+    gain.gain.linearRampToValueAtTime(0.5, now + 0.4);
+    gain.gain.setValueAtTime(0.45, now + duration - 0.6);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioEngine.masterGain || ctx.destination);
+
+    noise.start(now);
+    noise.stop(now + duration);
   }
 }
 

@@ -4,6 +4,7 @@ import { CDGRenderer, CDG_WIDTH, CDG_HEIGHT } from './engine/cdg/cdg-renderer.js
 import { STAGE_CHANNEL_NAME } from './engine/display/second-screen.js';
 import { QRCodeView } from './components/QRCodeView.jsx';
 import { parseYouTubeMessage } from './engine/youtube/youtube-player-controller.js';
+import { soundPads } from './engine/sfx/sound-pads.js';
 
 function StageApp() {
   const [state, setState] = useState({
@@ -263,6 +264,10 @@ function StageApp() {
           partyBroker: payload.partyBroker || 'hivemq',
           partySessionId: payload.partySessionId || ''
         }));
+      } else if (type === 'STAGE_SFX') {
+        if (payload?.padId) {
+          soundPads.play(payload.padId).catch(console.error);
+        }
       }
     };
 

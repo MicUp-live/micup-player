@@ -928,20 +928,23 @@ export function PartyApp() {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
                   {[
                     { pad: 'applause', emoji: '👏', label: 'Applause' },
-                    { pad: 'airhorn', emoji: '🎺', label: 'Air Horn' },
+                    { pad: 'airhorn', emoji: '📯', label: 'Air Horn' },
                     { pad: 'drumroll', emoji: '🥁', label: 'Drum Roll' },
                     { pad: 'rimshot', emoji: '💥', label: 'Rimshot' },
-                    { pad: 'laughter', emoji: '😂', label: 'Laugh Track' },
-                    { pad: 'scratch', emoji: '📀', label: 'DJ Scratch' }
+                    { pad: 'laughter', emoji: '😂', label: 'Laughter' },
+                    { pad: 'scratch', emoji: '🎧', label: 'Scratch' },
+                    { pad: 'crickets', emoji: '🦗', label: 'Crickets' },
+                    { pad: 'fail', emoji: '🎺', label: 'Sad Trombone' },
+                    { pad: 'boo', emoji: '👎', label: 'Crowd Boo' }
                   ].map((sfx) => (
                     <button
                       key={sfx.pad}
                       onClick={() => handleTriggerSfx(sfx.pad, sfx.emoji, sfx.label)}
                       style={{
-                        height: '72px',
+                        height: '76px',
                         background: 'var(--bg-surface)',
                         border: '1px solid var(--border-medium)',
                         borderRadius: '12px',
@@ -953,11 +956,21 @@ export function PartyApp() {
                         gap: '4px',
                         cursor: 'pointer',
                         transition: 'transform 0.1s ease',
-                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                        userSelect: 'none'
                       }}
                     >
                       <span style={{ fontSize: '24px' }}>{sfx.emoji}</span>
-                      <span style={{ fontSize: '12px', fontWeight: 700 }}>{sfx.label}</span>
+                      <span style={{
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        maxWidth: '95%'
+                      }}>
+                        {sfx.label}
+                      </span>
                     </button>
                   ))}
                 </div>

@@ -190,6 +190,16 @@ export class SecondScreenController {
       payload: { isPartyActive, partyRoomCode, partyBroker, partySessionId }
     });
   }
+
+  /**
+   * Broadcast SFX trigger to stage screen so audio plays through TV / stage speakers
+   */
+  sendSfx(padId) {
+    this.channel.postMessage({
+      type: 'STAGE_SFX',
+      payload: { padId }
+    });
+  }
 }
 
 export const secondScreen = new SecondScreenController();
