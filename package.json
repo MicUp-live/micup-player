@@ -1,0 +1,21 @@
+{
+  "name": "micup-player",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "node --test 'src/**/*.test.js'",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@preact/signals": "^2.11.3",
+    "fflate": "^0.8.3",
+    "preact": "^10.29.8"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "vite": "^8.3.0"
+  }
+}
