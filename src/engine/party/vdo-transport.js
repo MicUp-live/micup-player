@@ -1,6 +1,6 @@
 /**
- * WebRTC DataChannel transport using VDO.Ninja SDK (MPL-2.0)
- * Handles autoConnect to room in data-only mode (&datamode)
+ * WebRTC DataChannel transport using VDO.Ninja SDK v1.6.1 (MPL-2.0)
+ * Handles P2P room connection in data-only mode via announce & joinRoom
  */
 
 export class VDONinjaTransport {
@@ -12,7 +12,8 @@ export class VDONinjaTransport {
   }
 
   /**
-   * Load the official VDO.Ninja SDK dynamically if not already loaded
+   * Load the official VDO.Ninja SDK dynamically
+   * Tries local public asset first, then falls back to official CDN
    */
   async loadSDK() {
     if (typeof window === 'undefined') {
@@ -23,32 +24,50 @@ export class VDONinjaTransport {
       return window.VDONinjaSDK;
     }
 
-    return new Promise((resolve, reject) => {
+    const baseUrl = import.meta.env?.BASE_URL || './';
+    const localPath = baseUrl.endsWith('/') ? `${baseUrl}vdoninja-sdk.min.js` : `${baseUrl}/vdoninja-sdk.min.js`;
+    const localUrl = window.location ? new URL(localPath, window.location.href).href : '/vdoninja-sdk.min.js';
+    const cdnUrl = 'https://sdk.vdo.ninja/vdoninja-sdk.min.js';
+
+    const loadScript = (src) => new Promise((resolve, reject) => {
       const script = document.createElement('script');
-      script.src = 'https://sdk.vdo.ninja/vdoninja.js';
+      script.src = src;
       script.async = true;
       script.onload = () => {
         if (window.VDONinjaSDK) {
           resolve(window.VDONinjaSDK);
         } else {
-          reject(new Error('VDONinjaSDK script loaded but window.VDONinjaSDK is undefined'));
+          reject(new Error(`Loaded ${src} but window.VDONinjaSDK not defined`));
         }
       };
-      script.onerror = () => reject(new Error('Failed to load VDO.Ninja SDK from https://sdk.vdo.ninja/vdoninja.js'));
+      script.onerror = () => reject(new Error(`Failed to load script from ${src}`));
       document.head.appendChild(script);
     });
+
+    try {
+      return await loadScript(localUrl);
+    } catch (err) {
+      console.warn(`Local VDO.Ninja SDK load failed (${err.message}), trying CDN...`);
+      return await loadScript(cdnUrl);
+    }
   }
 
   /**
    * Connect to room
    */
   async connect(roomCode) {
-    this.room = roomCode;
+    this.room = String(roomCode || '').toLowerCase().trim();
+    const cleanRoom = `micup_${this.room}`;
+    const streamID = `user_${Math.random().toString(36).substring(2, 8)}`;
+
     const SDKClass = await this.loadSDK();
-    this.sdk = new SDKClass();
+    this.sdk = new SDKClass({
+      room: cleanRoom,
+      password: false
+    });
 
     this.sdk.addEventListener('dataReceived', (e) => {
-      const data = e.detail?.data || e.data;
+      const data = e.detail?.data !== undefined ? e.detail.data : e.data;
       this.emit('message', data);
     });
 
@@ -57,15 +76,32 @@ export class VDONinjaTransport {
       this.emit('connected');
     });
 
+    this.sdk.addEventListener('peerConnected', () => {
+      this.connected = true;
+      this.emit('connected');
+    });
+
+    this.sdk.addEventListener('peerDisconnected', () => {
+      this.emit('disconnected');
+    });
+
     this.sdk.addEventListener('disconnected', () => {
       this.connected = false;
       this.emit('disconnected');
     });
 
-    // Auto-connect in data-only mode (&datamode)
-    await this.sdk.autoConnect({
-      room: `micup_party_${roomCode.toLowerCase()}`,
-      datamode: true
+    // 1. Connect to signaling
+    await this.sdk.connect();
+
+    // 2. Announce data-only stream
+    await this.sdk.announce({
+      streamID,
+      room: cleanRoom
+    });
+
+    // 3. Join room mesh
+    await this.sdk.joinRoom({
+      room: cleanRoom
     });
 
     this.connected = true;
@@ -78,10 +114,10 @@ export class VDONinjaTransport {
     this.connected = false;
     if (this.sdk) {
       try {
-        if (typeof this.sdk.close === 'function') this.sdk.close();
+        if (typeof this.sdk.leaveRoom === 'function') this.sdk.leaveRoom();
         if (typeof this.sdk.disconnect === 'function') this.sdk.disconnect();
       } catch (err) {
-        console.warn('Error closing VDO.Ninja SDK connection:', err);
+        console.warn('Error closing VDO.Ninja connection:', err);
       }
       this.sdk = null;
     }
@@ -93,7 +129,11 @@ export class VDONinjaTransport {
    */
   send(data) {
     if (this.sdk && typeof this.sdk.sendData === 'function') {
-      this.sdk.sendData(data);
+      try {
+        this.sdk.sendData(data);
+      } catch (err) {
+        console.warn('Error sending data over VDO.Ninja DataChannel:', err);
+      }
     }
   }
 
