@@ -6,6 +6,15 @@
  * or resilient public Invidious CORS mirrors.
  */
 
+const ALLOWED_YOUTUBE_HOSTS = new Set([
+  'youtube.com',
+  'www.youtube.com',
+  'm.youtube.com',
+  'music.youtube.com',
+  'youtu.be',
+  'www.youtube-nocookie.com'
+]);
+
 export function extractYouTubeVideoId(input) {
   if (!input || typeof input !== 'string') return null;
   const str = input.trim();
@@ -15,25 +24,35 @@ export function extractYouTubeVideoId(input) {
     return str;
   }
 
-  // 2. youtu.be/<id>
-  const shortMatch = str.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
-  if (shortMatch) return shortMatch[1];
+  // 2. Parse URL with strict hostname validation
+  try {
+    let toParse = str;
+    if (!/^https?:\/\//i.test(toParse)) {
+      toParse = `https://${toParse}`;
+    }
+    const url = new URL(toParse);
+    const host = url.hostname.toLowerCase();
 
-  // 3. youtube.com/watch?v=<id>
-  const watchMatch = str.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-  if (watchMatch) return watchMatch[1];
+    if (!ALLOWED_YOUTUBE_HOSTS.has(host)) {
+      return null;
+    }
 
-  // 4. youtube.com/embed/<id>
-  const embedMatch = str.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/);
-  if (embedMatch) return embedMatch[1];
+    if (host === 'youtu.be') {
+      const id = url.pathname.slice(1).split('/')[0];
+      return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
+    }
 
-  // 5. youtube.com/shorts/<id>
-  const shortsMatch = str.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/);
-  if (shortsMatch) return shortsMatch[1];
+    const vParam = url.searchParams.get('v');
+    if (vParam && /^[a-zA-Z0-9_-]{11}$/.test(vParam)) {
+      return vParam;
+    }
 
-  // 6. youtube.com/live/<id>
-  const liveMatch = str.match(/youtube\.com\/live\/([a-zA-Z0-9_-]{11})/);
-  if (liveMatch) return liveMatch[1];
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    if (pathParts[0] === 'embed' || pathParts[0] === 'shorts' || pathParts[0] === 'live') {
+      const id = pathParts[1];
+      return id && /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
+    }
+  } catch {}
 
   return null;
 }

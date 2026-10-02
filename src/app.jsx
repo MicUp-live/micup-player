@@ -20,7 +20,7 @@ import {
   isSecondScreenConnected
 } from './state/player-state.js';
 
-import { isPartyActive, partyRoomCode, broadcastCurrentPartyQueue, startPartyHost } from './state/party-state.js';
+import { isPartyActive, partyRoomCode, partyBroker, partySessionId, broadcastCurrentPartyQueue, startPartyHost } from './state/party-state.js';
 
 import { CDGRenderer } from './engine/cdg/cdg-renderer.js';
 import { audioEngine } from './engine/audio/audio-engine.js';
@@ -99,13 +99,22 @@ export function App() {
         title: current?.title || null,
         artist: current?.artist || null,
         singerName: current?.singerName || null,
+        videoUrl: current?.videoUrl || null,
         semitones: semitones.value,
         isPlaying: isPlaying.value,
         upNextSinger: current ? (queue.value[1] || null) : (queue.value[0] || null),
         isPartyActive: isPartyActive.value,
-        partyRoomCode: partyRoomCode.value
+        partyRoomCode: partyRoomCode.value,
+        partyBroker: partyBroker.value,
+        partySessionId: partySessionId.value
       });
-      secondScreen.sendPartyState(isPartyActive.value, partyRoomCode.value);
+
+      // Replay complete lyric data if CDG track is active
+      if (current?.type === 'cdg' && current?.cdgData) {
+        secondScreen.sendCDGData(current.cdgData);
+      }
+
+      secondScreen.sendPartyState(isPartyActive.value, partyRoomCode.value, partyBroker.value, partySessionId.value);
     };
   }, []);
 

@@ -63,14 +63,12 @@ describe('PartyClient Engine', () => {
       youtubeId: 'XFkzRNyygfk'
     });
 
-    assert.equal(transport.sentMessages.length, 2);
-    assert.equal(transport.sentMessages[0].action, PartyAction.PEER_JOIN);
-    const msg = transport.sentMessages[1];
-    assert.equal(msg.action, PartyAction.ADD_SONG);
-    assert.equal(msg.payload.singer, 'Dave');
-    assert.equal(msg.payload.title, 'Creep');
-    assert.equal(msg.payload.preferredKey, -1);
-    assert.equal(msg.payload.youtubeId, 'XFkzRNyygfk');
+    const addSongMsg = transport.sentMessages.find(m => m.action === PartyAction.ADD_SONG);
+    assert.ok(addSongMsg, 'ADD_SONG message must be sent');
+    assert.equal(addSongMsg.payload.singer, 'Dave');
+    assert.equal(addSongMsg.payload.title, 'Creep');
+    assert.equal(addSongMsg.payload.preferredKey, -1);
+    assert.equal(addSongMsg.payload.youtubeId, 'XFkzRNyygfk');
   });
 
   it('sends sound effect reaction to host', async () => {
@@ -80,12 +78,10 @@ describe('PartyClient Engine', () => {
 
     client.triggerSfx('applause');
 
-    assert.equal(transport.sentMessages.length, 2);
-    assert.equal(transport.sentMessages[0].action, PartyAction.PEER_JOIN);
-    const msg = transport.sentMessages[1];
-    assert.equal(msg.action, PartyAction.TRIGGER_SFX);
-    assert.equal(msg.payload.pad, 'applause');
-    assert.equal(msg.payload.sender, 'Alex');
+    const sfxMsg = transport.sentMessages.find(m => m.action === PartyAction.TRIGGER_SFX);
+    assert.ok(sfxMsg, 'TRIGGER_SFX message must be sent');
+    assert.equal(sfxMsg.payload.pad, 'applause');
+    assert.equal(sfxMsg.payload.sender, 'Alex');
   });
 
   it('updates local queue and calls onQueueUpdate when host broadcasts update', async () => {

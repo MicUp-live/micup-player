@@ -49,10 +49,17 @@ class PitchShifterProcessor extends AudioWorkletProcessor {
     const numChannels = Math.min(input.length, output.length, 2);
     const blockSize = input[0].length;
 
-    // Fast-path: When pitch is 0, pass-through directly without phase modulation
+    // Fast-path: When pitch is 0, pass-through directly without phase modulation,
+    // while keeping circular delay buffers filled to prevent stale audio pops upon pitch shift.
     if (Math.abs(semitones) < 0.01) {
       for (let ch = 0; ch < numChannels; ch++) {
         output[ch].set(input[ch]);
+      }
+      for (let i = 0; i < blockSize; i++) {
+        for (let ch = 0; ch < numChannels; ch++) {
+          this.buffers[ch][this.writeIndex] = input[ch][i];
+        }
+        this.writeIndex = (this.writeIndex + 1) % this.bufferLength;
       }
       return true;
     }

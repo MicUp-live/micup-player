@@ -54,6 +54,17 @@ function StageApp() {
 
       if (type === 'STATE_UPDATE') {
         setState(prev => ({ ...prev, ...payload }));
+        if (payload.mediaType === 'video' && payload.videoUrl && videoRef.current) {
+          if (videoRef.current.src !== payload.videoUrl) {
+            videoRef.current.src = payload.videoUrl;
+            videoRef.current.muted = true;
+          }
+          if (payload.isPlaying) {
+            videoRef.current.play().catch(() => {});
+          } else {
+            videoRef.current.pause();
+          }
+        }
       } else if (type === 'CDG_LOAD') {
         if (!cdgRendererRef.current && canvasRef.current) {
           cdgRendererRef.current = new CDGRenderer(canvasRef.current);
@@ -90,7 +101,9 @@ function StageApp() {
         setState(prev => ({
           ...prev,
           isPartyActive: Boolean(payload.isPartyActive),
-          partyRoomCode: payload.partyRoomCode || ''
+          partyRoomCode: payload.partyRoomCode || '',
+          partyBroker: payload.partyBroker || 'hivemq',
+          partySessionId: payload.partySessionId || ''
         }));
       }
     };
@@ -100,7 +113,7 @@ function StageApp() {
 
   const isPartyActive = Boolean(state.isPartyActive && state.partyRoomCode);
   const joinUrl = isPartyActive && typeof window !== 'undefined' && window.location
-    ? new URL(`party.html?room=${encodeURIComponent(state.partyRoomCode)}`, window.location.href).href
+    ? new URL(`party.html?room=${encodeURIComponent(state.partyRoomCode)}&broker=${encodeURIComponent(state.partyBroker || 'hivemq')}&session=${encodeURIComponent(state.partySessionId || '')}`, window.location.href).href
     : '';
 
   return (

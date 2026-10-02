@@ -1,14 +1,17 @@
 /**
- * Party Protocol definitions and helpers for WebRTC DataChannel messaging
+ * Party Protocol definitions, creators, and validators for House Party Mode
  */
 
 export const PartyAction = Object.freeze({
+  HELLO: 'HELLO',
+  WELCOME: 'WELCOME',
   ADD_SONG: 'ADD_SONG',
+  ADD_SONG_ACK: 'ADD_SONG_ACK',
   QUEUE_UPDATE: 'QUEUE_UPDATE',
   TRIGGER_SFX: 'TRIGGER_SFX',
   SEARCH_REQ: 'SEARCH_REQ',
   SEARCH_RES: 'SEARCH_RES',
-  PEER_JOIN: 'PEER_JOIN',
+  PEER_JOIN: 'PEER_JOIN'
 });
 
 /**
@@ -24,10 +27,62 @@ export function generateRoomCode() {
   return code;
 }
 
+export function generateNonce() {
+  return `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
 /**
- * Create normalized ADD_SONG message
+ * Create HELLO handshake message (Guest -> Host)
+ */
+export function createHelloMessage({
+  clientId = '',
+  singer = 'Guest',
+  nonce = null,
+  session = ''
+} = {}) {
+  return {
+    action: PartyAction.HELLO,
+    payload: {
+      clientId: String(clientId || `guest_${Date.now()}`),
+      singer: String(singer || 'Guest').trim(),
+      nonce: nonce || generateNonce(),
+      session: String(session || ''),
+      timestamp: Date.now()
+    }
+  };
+}
+
+/**
+ * Create WELCOME handshake response (Host -> Guest)
+ */
+export function createWelcomeMessage({
+  nonce = '',
+  sessionId = '',
+  revision = 1,
+  queue = [],
+  currentTrack = null
+} = {}) {
+  return {
+    action: PartyAction.WELCOME,
+    payload: {
+      nonce: String(nonce || ''),
+      sessionId: String(sessionId || ''),
+      revision: Number(revision) || 1,
+      queue: Array.isArray(queue) ? queue : [],
+      currentTrack: currentTrack || null,
+      timestamp: Date.now()
+    }
+  };
+}
+
+/**
+ * Create normalized ADD_SONG message (Guest -> Host)
  */
 export function createAddSongMessage({
+  id = null,
+  requestId = null,
+  sessionId = '',
+  clientId = '',
   singer = 'Guest',
   title = '',
   artist = '',
@@ -40,29 +95,60 @@ export function createAddSongMessage({
   if (isNaN(key)) key = 0;
   key = Math.max(-6, Math.min(6, key));
 
+  const reqId = requestId || id || (typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`);
+
   return {
     action: PartyAction.ADD_SONG,
     payload: {
-      id: `party_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-      singer: String(singer || 'Guest').trim(),
-      title: String(title || '').trim(),
-      artist: String(artist || '').trim(),
+      id: String(reqId),
+      requestId: String(reqId),
+      sessionId: String(sessionId || ''),
+      clientId: String(clientId || ''),
+      singer: String(singer || 'Guest').trim().slice(0, 60),
+      title: String(title || '').trim().slice(0, 120),
+      artist: String(artist || '').trim().slice(0, 120),
       preferredKey: key,
       source: source === 'youtube' ? 'youtube' : 'local',
-      youtubeId: youtubeId ? String(youtubeId).trim() : null,
-      notes: notes ? String(notes).trim() : '',
+      youtubeId: youtubeId ? String(youtubeId).trim().slice(0, 32) : null,
+      notes: notes ? String(notes).trim().slice(0, 200) : '',
       createdAt: Date.now()
     }
   };
 }
 
 /**
- * Create QUEUE_UPDATE message broadcast to all peers
+ * Create ADD_SONG_ACK message (Host -> Guest)
  */
-export function createQueueUpdateMessage(queue = [], currentTrack = null) {
+export function createAddSongAckMessage({
+  requestId,
+  accepted = true,
+  error = null,
+  songId = null,
+  revision = 1
+}) {
+  return {
+    action: PartyAction.ADD_SONG_ACK,
+    payload: {
+      requestId: String(requestId || ''),
+      accepted: Boolean(accepted),
+      error: error ? String(error) : null,
+      songId: songId ? String(songId) : null,
+      revision: Number(revision) || 1,
+      timestamp: Date.now()
+    }
+  };
+}
+
+/**
+ * Create QUEUE_UPDATE message broadcast to all peers (Host -> Guests)
+ */
+export function createQueueUpdateMessage(queue = [], currentTrack = null, revision = 1) {
   return {
     action: PartyAction.QUEUE_UPDATE,
     payload: {
+      revision: Number(revision) || 1,
       queue: Array.isArray(queue) ? queue : [],
       currentTrack: currentTrack || null,
       timestamp: Date.now()
@@ -71,14 +157,15 @@ export function createQueueUpdateMessage(queue = [], currentTrack = null) {
 }
 
 /**
- * Create TRIGGER_SFX message
+ * Create TRIGGER_SFX message (Guest -> Host)
  */
 export function createSfxMessage(pad, sender = 'Guest') {
   return {
     action: PartyAction.TRIGGER_SFX,
     payload: {
+      id: `sfx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       pad: String(pad).toLowerCase().trim(),
-      sender: String(sender || 'Guest').trim(),
+      sender: String(sender || 'Guest').trim().slice(0, 40),
       timestamp: Date.now()
     }
   };

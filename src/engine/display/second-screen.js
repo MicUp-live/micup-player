@@ -98,10 +98,10 @@ export class SecondScreenController {
   /**
    * Broadcast party room state to stage window
    */
-  sendPartyState(isPartyActive, partyRoomCode) {
+  sendPartyState(isPartyActive, partyRoomCode, partyBroker = 'hivemq', partySessionId = '') {
     this.channel.postMessage({
       type: 'PARTY_STATE',
-      payload: { isPartyActive, partyRoomCode }
+      payload: { isPartyActive, partyRoomCode, partyBroker, partySessionId }
     });
   }
 }

@@ -3,12 +3,20 @@ import assert from 'node:assert/strict';
 import {
   isPartyActive,
   partyRoomCode,
+  partyBroker,
+  partySessionId,
   partyActivityLogs,
+  connectedPeersCount,
   startPartyHost,
   stopPartyHost
 } from './party-state.js';
 import { queue } from './player-state.js';
-import { createAddSongMessage, createSfxMessage } from '../engine/party/party-protocol.js';
+import {
+  createAddSongMessage,
+  createHelloMessage,
+  createSfxMessage,
+  PartyAction
+} from '../engine/party/party-protocol.js';
 
 class MockTransport {
   constructor() {
@@ -53,15 +61,17 @@ describe('Party State Integration', () => {
 
   it('starts party host with mock transport and updates signals', async () => {
     const transport = new MockTransport();
-    const code = await startPartyHost('TEST1', transport);
+    const code = await startPartyHost('TEST1', transport, 'hivemq');
 
     assert.equal(code, 'TEST1');
     assert.equal(isPartyActive.value, true);
     assert.equal(partyRoomCode.value, 'TEST1');
+    assert.equal(partyBroker.value, 'hivemq');
+    assert.ok(partySessionId.value.length > 0);
     assert.ok(partyActivityLogs.value.length > 0);
   });
 
-  it('adds incoming party song to playerState queue', async () => {
+  it('adds incoming party YouTube song to playerState queue', async () => {
     const transport = new MockTransport();
     await startPartyHost('TEST2', transport);
 
@@ -84,9 +94,85 @@ describe('Party State Integration', () => {
     assert.equal(added.source, 'youtube');
   });
 
-  it('stops party host cleanly', async () => {
+  it('adds incoming party manual song without throwing (critical regression test)', async () => {
     const transport = new MockTransport();
     await startPartyHost('TEST3', transport);
+
+    const manualMsg = createAddSongMessage({
+      singer: 'Dave',
+      title: 'Wonderwall',
+      artist: 'Oasis',
+      preferredKey: 0,
+      source: 'local',
+      youtubeId: null
+    });
+
+    transport.simulatePeerMessage(manualMsg);
+
+    assert.equal(queue.value.length, 1);
+    const added = queue.value[0];
+    assert.equal(added.singerName, 'Dave');
+    assert.equal(added.title, 'Wonderwall');
+    assert.equal(added.source, 'local');
+
+    // Verify ADD_SONG_ACK was sent back to transport
+    const ack = transport.sentMessages.find(m => m.action === PartyAction.ADD_SONG_ACK);
+    assert.ok(ack, 'ADD_SONG_ACK should be emitted');
+    assert.equal(ack.payload.accepted, true);
+  });
+
+  it('deduplicates duplicate ADD_SONG messages with identical requestId', async () => {
+    const transport = new MockTransport();
+    await startPartyHost('TEST4', transport);
+
+    const songMsg = createAddSongMessage({
+      requestId: 'req-unique-12345',
+      singer: 'Sam',
+      title: 'Sweet Caroline',
+      artist: 'Neil Diamond',
+      preferredKey: 0
+    });
+
+    // Send first time
+    transport.simulatePeerMessage(songMsg);
+    assert.equal(queue.value.length, 1);
+
+    // Replay duplicate with same requestId
+    transport.simulatePeerMessage(songMsg);
+    assert.equal(queue.value.length, 1, 'Duplicate request must not be queued twice');
+  });
+
+  it('responds with WELCOME and tracks peer count on HELLO handshake', async () => {
+    const transport = new MockTransport();
+    await startPartyHost('TEST5', transport);
+
+    const helloMsg = createHelloMessage({
+      clientId: 'guest_client_99',
+      singer: 'Alex',
+      nonce: 'nonce_123'
+    });
+
+    transport.simulatePeerMessage(helloMsg);
+
+    const welcome = transport.sentMessages.find(m => m.action === PartyAction.WELCOME);
+    assert.ok(welcome, 'WELCOME message must be sent');
+    assert.equal(welcome.payload.nonce, 'nonce_123');
+    assert.equal(connectedPeersCount.value, 1);
+  });
+
+  it('handles soundboard triggers cleanly without throwing', async () => {
+    const transport = new MockTransport();
+    await startPartyHost('TEST6', transport);
+
+    const sfxMsg = createSfxMessage('applause', 'Sarah');
+    transport.simulatePeerMessage(sfxMsg);
+
+    assert.ok(partyActivityLogs.value.some(log => log.text.includes('Sarah triggered applause')));
+  });
+
+  it('stops party host cleanly', async () => {
+    const transport = new MockTransport();
+    await startPartyHost('TEST7', transport);
     assert.equal(isPartyActive.value, true);
 
     stopPartyHost();

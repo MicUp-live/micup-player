@@ -1,11 +1,13 @@
 import { signal } from '@preact/signals';
 import { PartyHost } from '../engine/party/party-host.js';
 import { queue, currentTrack } from './player-state.js';
-import { LibraryStore } from '../engine/library/library-store.js';
-import { SoundPads } from '../engine/sfx/sound-pads.js';
+import { libraryStore } from '../engine/library/library-store.js';
+import { soundPads } from '../engine/sfx/sound-pads.js';
 
 export const isPartyActive = signal(false);
 export const partyRoomCode = signal('');
+export const partyBroker = signal('hivemq');
+export const partySessionId = signal('');
 export const connectedPeersCount = signal(0);
 export const partyActivityLogs = signal([]);
 
@@ -20,16 +22,18 @@ function addPartyLog(text) {
 /**
  * Start the P2P House Party Host
  */
-export async function startPartyHost(preferredCode = null, customTransport = null) {
+export async function startPartyHost(preferredCode = null, customTransport = null, brokerId = 'hivemq') {
   if (isPartyActive.value && partyHostInstance) {
     return partyRoomCode.value;
   }
 
   partyHostInstance = new PartyHost({
     transport: customTransport,
+    brokerId,
     onAddSong: (song) => {
       const newItem = {
         id: song.id || `party_${Date.now()}`,
+        requestId: song.requestId || null,
         singerName: song.singer || 'Guest',
         title: song.title || 'Untitled Song',
         artist: song.artist || 'Unknown Artist',
@@ -44,12 +48,13 @@ export async function startPartyHost(preferredCode = null, customTransport = nul
 
       // Auto-match with local library if track title/artist available
       if (newItem.source === 'local' && (newItem.title || newItem.artist)) {
-        const match = LibraryStore.matchRequest({
-          song_artist: newItem.artist,
-          song_title: newItem.title
-        });
-        if (match) {
-          newItem.mediaItem = match;
+        try {
+          const match = libraryStore.matchRequest(newItem.artist, newItem.title);
+          if (match) {
+            newItem.mediaItem = match;
+          }
+        } catch (err) {
+          console.warn('Library match error:', err);
         }
       }
 
@@ -58,15 +63,18 @@ export async function startPartyHost(preferredCode = null, customTransport = nul
 
       // Broadcast fresh queue back to all party guests
       broadcastCurrentPartyQueue();
+
+      return newItem;
     },
     onTriggerSfx: (sfx) => {
       if (sfx && sfx.pad) {
-        SoundPads.trigger(sfx.pad);
+        soundPads.play(sfx.pad).catch(console.error);
         const padEmoji = {
           airhorn: '🎺',
           applause: '👏',
           drumroll: '🥁',
           rimshot: '💥',
+          laughter: '😂',
           laugh: '😂',
           scratch: '📀'
         }[sfx.pad] || '🔊';
@@ -75,12 +83,21 @@ export async function startPartyHost(preferredCode = null, customTransport = nul
       }
     },
     onSearch: (query) => {
-      return LibraryStore.search(query).slice(0, 15);
+      try {
+        return libraryStore.search(query).slice(0, 15);
+      } catch {
+        return [];
+      }
+    },
+    onPeersChange: (count) => {
+      connectedPeersCount.value = count;
     }
   });
 
   const code = await partyHostInstance.start(preferredCode);
   partyRoomCode.value = code;
+  partyBroker.value = partyHostInstance.brokerId || brokerId;
+  partySessionId.value = partyHostInstance.sessionId || '';
   isPartyActive.value = true;
   connectedPeersCount.value = partyHostInstance.connectedPeersCount;
   addPartyLog(`🏠 House Party started with room code [${code}]`);

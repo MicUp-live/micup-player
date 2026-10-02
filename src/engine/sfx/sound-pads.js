@@ -14,6 +14,7 @@ export class SoundPads {
   }
 
   async play(padId) {
+    if (typeof window === 'undefined') return;
     await audioEngine.init();
     const ctx = audioEngine.ctx;
     if (!ctx) return;

@@ -2,6 +2,8 @@ import { useState } from 'preact/hooks';
 import {
   isPartyActive,
   partyRoomCode,
+  partyBroker,
+  partySessionId,
   connectedPeersCount,
   partyActivityLogs,
   startPartyHost,
@@ -18,17 +20,19 @@ export function HousePartyModal({ isOpen, onClose }) {
 
   const active = isPartyActive.value;
   const room = partyRoomCode.value;
+  const broker = partyBroker.value || 'hivemq';
+  const session = partySessionId.value || '';
   const peers = connectedPeersCount.value;
   const logs = partyActivityLogs.value;
 
   const partyUrl = (active && typeof window !== 'undefined' && window.location)
-    ? new URL(`party.html?room=${encodeURIComponent(room)}`, window.location.href).href
+    ? new URL(`party.html?room=${encodeURIComponent(room)}&broker=${encodeURIComponent(broker)}&session=${encodeURIComponent(session)}`, window.location.href).href
     : '';
 
   const handleStart = async () => {
     setIsStarting(true);
     try {
-      await startPartyHost(customCode || null);
+      await startPartyHost(customCode || null, null, 'hivemq');
     } catch (err) {
       console.error('Failed to start party:', err);
       alert('Could not start party connection. Please check network.');
