@@ -65,7 +65,15 @@ describe('PartyHost Engine', () => {
 
     await host.start('ROCK4');
 
+    // Register guest
+    transport.simulatePeerMessage({
+      action: PartyAction.HELLO,
+      payload: { clientId: 'dave-1', singer: 'Dave' }
+    });
+
     const songMsg = createAddSongMessage({
+      clientId: 'dave-1',
+      sessionId: host.sessionId,
       singer: 'Dave',
       title: 'Wonderwall',
       artist: 'Oasis',
@@ -92,7 +100,14 @@ describe('PartyHost Engine', () => {
     });
 
     await host.start('BEAT1');
-    const sfxMsg = createSfxMessage('airhorn', 'Crowd Member');
+
+    // Register guest
+    transport.simulatePeerMessage({
+      action: PartyAction.HELLO,
+      payload: { clientId: 'crowd-1', singer: 'Crowd Member' }
+    });
+
+    const sfxMsg = createSfxMessage('airhorn', 'Crowd Member', 'crowd-1', host.sessionId);
 
     transport.simulatePeerMessage(sfxMsg);
 
@@ -115,6 +130,125 @@ describe('PartyHost Engine', () => {
     const lastMsg = transport.broadcastedMessages[0];
     assert.equal(lastMsg.action, PartyAction.QUEUE_UPDATE);
     assert.equal(lastMsg.payload.queue[0].singer, 'Alice');
+  });
+
+  it('rejects anonymous, unregistered, and stale session song requests', async () => {
+    const transport = new MockTransport();
+    let onAddSongCalled = false;
+
+    const host = new PartyHost({
+      transport,
+      onAddSong: () => {
+        onAddSongCalled = true;
+      }
+    });
+
+    await host.start('SAFE1');
+
+    // 1. Send anonymous ADD_SONG (no clientId or sessionId)
+    transport.simulatePeerMessage({
+      action: PartyAction.ADD_SONG,
+      payload: {
+        requestId: 'req-anon',
+        title: 'Anonymous Hack Song',
+        singer: 'Anonymous'
+      }
+    });
+
+    assert.equal(onAddSongCalled, false, 'onAddSong must not be called for anonymous request');
+    const anonAck = transport.broadcastedMessages.find(m => m.payload?.requestId === 'req-anon');
+    assert.ok(anonAck, 'Rejection ACK must be sent for anonymous request');
+    assert.equal(anonAck.payload.accepted, false);
+    assert.match(anonAck.payload.error, /stale|registered/i);
+
+    // 2. Send ADD_SONG from unregistered client with matching session
+    transport.simulatePeerMessage({
+      action: PartyAction.ADD_SONG,
+      payload: {
+        requestId: 'req-bad-client',
+        clientId: 'unregistered_guest',
+        sessionId: host.sessionId,
+        title: 'Hacked Song',
+        singer: 'Bad Actor'
+      }
+    });
+
+    assert.equal(onAddSongCalled, false, 'onAddSong must not be called for unregistered client');
+    const rejectAck = transport.broadcastedMessages.find(m => m.payload?.requestId === 'req-bad-client');
+    assert.ok(rejectAck, 'Rejection ACK must be sent');
+    assert.equal(rejectAck.payload.accepted, false);
+    assert.match(rejectAck.payload.error, /Client not registered/i);
+
+    // 3. Register client via HELLO
+    transport.simulatePeerMessage({
+      action: PartyAction.HELLO,
+      payload: {
+        clientId: 'good_guest',
+        singer: 'Good Singer'
+      }
+    });
+
+    // 4. Send ADD_SONG with stale session
+    transport.simulatePeerMessage({
+      action: PartyAction.ADD_SONG,
+      payload: {
+        requestId: 'req-stale-session',
+        clientId: 'good_guest',
+        sessionId: 'old-session-123',
+        title: 'Valid Title',
+        singer: 'Good Singer'
+      }
+    });
+
+    assert.equal(onAddSongCalled, false, 'onAddSong must not be called for stale session');
+    const staleAck = transport.broadcastedMessages.find(m => m.payload?.requestId === 'req-stale-session');
+    assert.ok(staleAck);
+    assert.equal(staleAck.payload.accepted, false);
+    assert.match(staleAck.payload.error, /Stale party session/i);
+
+    // 5. Send valid ADD_SONG from registered client with matching session
+    transport.simulatePeerMessage({
+      action: PartyAction.ADD_SONG,
+      payload: {
+        requestId: 'req-valid',
+        clientId: 'good_guest',
+        sessionId: host.sessionId,
+        title: 'Valid Song',
+        singer: 'Good Singer'
+      }
+    });
+
+    assert.equal(onAddSongCalled, true, 'onAddSong must be called for verified client');
+    const validAck = transport.broadcastedMessages.find(m => m.payload?.requestId === 'req-valid');
+    assert.ok(validAck);
+    assert.equal(validAck.payload.accepted, true);
+  });
+
+  it('throttles rapid-fire TRIGGER_SFX messages from peers', async () => {
+    const transport = new MockTransport();
+    let sfxTriggerCount = 0;
+
+    const host = new PartyHost({
+      transport,
+      onTriggerSfx: () => {
+        sfxTriggerCount++;
+      }
+    });
+
+    await host.start('SAFE2');
+
+    // Register peer
+    transport.simulatePeerMessage({
+      action: PartyAction.HELLO,
+      payload: { clientId: 'peer-sfx', singer: 'SFX Peer' }
+    });
+
+    // Rapid-fire SFX messages
+    transport.simulatePeerMessage(createSfxMessage('airhorn', 'Singer 1', 'peer-sfx', host.sessionId));
+    transport.simulatePeerMessage(createSfxMessage('applause', 'Singer 2', 'peer-sfx', host.sessionId));
+    transport.simulatePeerMessage(createSfxMessage('scratch', 'Singer 3', 'peer-sfx', host.sessionId));
+
+    assert.equal(sfxTriggerCount, 1, 'Only first SFX within cooldown window should trigger');
   });
 
   it('stops and disconnects cleanly', async () => {

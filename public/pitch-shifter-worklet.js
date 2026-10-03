@@ -59,7 +59,7 @@ class PitchShifterProcessor extends AudioWorkletProcessor {
         for (let ch = 0; ch < numChannels; ch++) {
           this.buffers[ch][this.writeIndex] = input[ch][i];
         }
-        this.writeIndex = (this.writeIndex + 1) % this.bufferLength;
+        this.writeIndex = (this.writeIndex + 1) % this.bufferSize;
       }
       return true;
     }

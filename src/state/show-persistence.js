@@ -40,12 +40,32 @@ export function compactShowState(state = {}) {
     type: item.type || (item.videoId || item.youtubeId ? 'youtube' : 'local'),
     videoId: item.videoId || item.youtubeId || null,
     youtubeId: item.youtubeId || item.videoId || null,
+    code: item.code || '',
+    filename: item.filename || '',
     status: item.status || 'queued',
     requestedAt: item.requestedAt || ''
   })) : [];
 
+  let currentTrack = null;
+  if (state.currentTrack && typeof state.currentTrack === 'object') {
+    currentTrack = {
+      title: state.currentTrack.title || '',
+      artist: state.currentTrack.artist || '',
+      singerName: state.currentTrack.singerName || '',
+      semitones: state.currentTrack.semitones || 0,
+      source: state.currentTrack.source || 'local',
+      type: state.currentTrack.type || 'local',
+      videoId: state.currentTrack.videoId || null,
+      code: state.currentTrack.code || '',
+      filename: state.currentTrack.filename || '',
+      queueItemId: state.currentTrack.queueItemId || null
+    };
+  }
+
   return {
     queue,
+    activeQueueItemId: state.activeQueueItemId || null,
+    currentTrack,
     autoApplause: state.autoApplause !== undefined ? Boolean(state.autoApplause) : true,
     isPartyActive: Boolean(state.isPartyActive),
     partyRoomCode: state.partyRoomCode || ''

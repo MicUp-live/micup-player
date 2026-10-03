@@ -8,8 +8,11 @@
 export const STAGE_CHANNEL_NAME = 'micup_stage_broadcast';
 
 export class SecondScreenController {
-  constructor() {
-    this.channel = new BroadcastChannel(STAGE_CHANNEL_NAME);
+  constructor({ channel = null } = {}) {
+    this.channel = channel || new BroadcastChannel(STAGE_CHANNEL_NAME);
+    if (this.channel && typeof this.channel.unref === 'function') {
+      this.channel.unref();
+    }
     this.stageWindow = null;
     this.isConnected = false;
     this.monitorInterval = null;
@@ -44,10 +47,10 @@ export class SecondScreenController {
         this.onStageTimeUpdate?.(msg.payload);
       } else if (msg.type === 'STAGE_PLAY_STATE') {
         this.lastHeartbeat = Date.now();
-        this.onStagePlayState?.(msg.payload?.isPlaying);
+        this.onStagePlayState?.(msg.payload);
       } else if (msg.type === 'STAGE_PLAYBACK_ENDED') {
         this.lastHeartbeat = Date.now();
-        this.onStagePlaybackEnded?.();
+        this.onStagePlaybackEnded?.(msg.payload);
       }
     };
   }
@@ -72,6 +75,9 @@ export class SecondScreenController {
         this.handleDisconnect('Stage window timed out');
       }
     }, 400);
+    if (this.monitorInterval && typeof this.monitorInterval.unref === 'function') {
+      this.monitorInterval.unref();
+    }
   }
 
   handleDisconnect(reason = 'Disconnected') {
@@ -85,6 +91,20 @@ export class SecondScreenController {
       this.stageWindow = null;
     }
     this.onStageDisconnected?.(reason);
+  }
+
+  destroy() {
+    this.isConnected = false;
+    if (this.monitorInterval) {
+      clearInterval(this.monitorInterval);
+      this.monitorInterval = null;
+    }
+    if (this.channel) {
+      try {
+        this.channel.close();
+      } catch (e) {}
+    }
+    this.stageWindow = null;
   }
 
   /**
@@ -139,6 +159,26 @@ export class SecondScreenController {
    */
   sendSeek(time) {
     this.channel.postMessage({ type: 'STAGE_SEEK', payload: { time } });
+  }
+
+  /**
+   * Send Pitch Shift command to Second Screen
+   */
+  sendPitch(semitones) {
+    this.channel.postMessage({
+      type: 'STAGE_PITCH',
+      payload: { semitones }
+    });
+  }
+
+  /**
+   * Send Volume command to Second Screen
+   */
+  sendVolume(volume) {
+    this.channel.postMessage({
+      type: 'STAGE_VOLUME',
+      payload: { volume }
+    });
   }
 
   /**

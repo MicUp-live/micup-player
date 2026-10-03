@@ -1,15 +1,8 @@
-import { queue, upNextSinger } from '../state/player-state.js';
+import { queue, upNextSinger, activeQueueItemId } from '../state/player-state.js';
+import { isPlayableYouTube } from '../engine/model/track-model.js';
 
 function isYouTubeItem(item) {
-  if (!item) return false;
-  return Boolean(
-    item.type === 'youtube' ||
-    item.videoId ||
-    item.youtubeId ||
-    item.source === 'youtube' ||
-    item.trackMatch?.type === 'youtube' ||
-    item.trackMatch?.videoId
-  );
+  return isPlayableYouTube(item);
 }
 
 export function QueuePanel({ onStartSong, onAddFromLibrary }) {
@@ -169,43 +162,53 @@ export function QueuePanel({ onStartSong, onAddFromLibrary }) {
             <div style={{ fontSize: '12px', marginTop: '4px' }}>Add songs from library or wait for singer requests.</div>
           </div>
         ) : (
-          queueList.map((item, index) => (
-            <div
-              key={item.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '10px 12px',
-                borderRadius: 'var(--radius-sm)',
-                background: index === 0 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.02)',
-                border: '1px solid var(--border-subtle)',
-                gap: '10px'
-              }}
-            >
-              {/* Order Number */}
-              <span className="font-mono" style={{ fontSize: '12px', color: 'var(--text-dim)', minWidth: '18px' }}>
-                #{index + 1}
-              </span>
+          queueList.map((item, index) => {
+            const isPerforming = item.id === activeQueueItemId.value;
+            return (
+              <div
+                key={item.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: isPerforming
+                    ? 'rgba(255, 42, 95, 0.12)'
+                    : (index === 0 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0.02)'),
+                  border: isPerforming ? '1px solid rgba(255, 42, 95, 0.5)' : '1px solid var(--border-subtle)',
+                  gap: '10px'
+                }}
+              >
+                {/* Order Number */}
+                <span className="font-mono" style={{ fontSize: '12px', color: 'var(--text-dim)', minWidth: '18px' }}>
+                  #{index + 1}
+                </span>
 
-              {/* Singer & Song Info */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {item.singerName}
-                  </span>
-                  {item.semitones !== 0 && (
-                    <span style={{ fontSize: '10px', color: 'var(--neon-amber)', fontWeight: 700 }}>
-                      ({item.semitones > 0 ? `+${item.semitones}♯` : `${item.semitones}♭`})
+                {/* Singer & Song Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {item.singerName}
                     </span>
-                  )}
+                    {isPerforming && (
+                      <span className="badge badge-coral" style={{ fontSize: '9px', padding: '1px 5px', gap: '4px' }}>
+                        <span className="pulse-dot" style={{ width: '4px', height: '4px' }} />
+                        ON STAGE
+                      </span>
+                    )}
+                    {item.semitones !== 0 && (
+                      <span style={{ fontSize: '10px', color: 'var(--neon-amber)', fontWeight: 700 }}>
+                        ({item.semitones > 0 ? `+${item.semitones}♯` : `${item.semitones}♭`})
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    {isYouTubeItem(item) && (
+                      <span style={{ color: 'var(--neon-coral)', fontWeight: 800, fontSize: '9px' }}>[YT]</span>
+                    )}
+                    <span>{item.title} — {item.artist}</span>
+                  </div>
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  {isYouTubeItem(item) && (
-                    <span style={{ color: 'var(--neon-coral)', fontWeight: 800, fontSize: '9px' }}>[YT]</span>
-                  )}
-                  <span>{item.title} — {item.artist}</span>
-                </div>
-              </div>
 
               {/* Actions */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
@@ -247,9 +250,10 @@ export function QueuePanel({ onStartSong, onAddFromLibrary }) {
                 </button>
               </div>
             </div>
-          ))
-        )}
-      </div>
+          );
+        })
+      )}
+    </div>
     </aside>
   );
 }

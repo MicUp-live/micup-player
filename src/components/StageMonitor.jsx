@@ -3,7 +3,7 @@ import { currentTrack, isPlaying, semitones, isSecondScreenConnected, audioOutpu
 import { CDG_WIDTH, CDG_HEIGHT } from '../engine/cdg/cdg-renderer.js';
 import { audioEngine } from '../engine/audio/audio-engine.js';
 
-export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile }) {
+export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile, onTimeUpdate, onEnded }) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [vuLevel, setVuLevel] = useState(0);
   const animFrameRef = useRef(null);
@@ -44,6 +44,7 @@ export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile }) {
   const isCDG = track && track.type === 'cdg';
   const isVideo = track && track.type === 'video';
   const isYouTube = track && track.type === 'youtube';
+  const isAudio = track && track.type === 'audio';
   const isIdle = !track;
   const shouldMuteHost = isSecondScreenConnected.value && audioOutputTarget.value === 'stage';
 
@@ -195,17 +196,61 @@ export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile }) {
         }}
       />
 
-      {/* HTML5 Video Element (Only when NOT on second screen) */}
-      {!isSecondScreenConnected.value && (
-        <video
-          ref={videoRef}
-          style={{
-            display: isVideo ? 'block' : 'none',
-            maxWidth: '100%',
-            maxHeight: '100%',
-            aspectRatio: '16/9'
-          }}
-        />
+      {/* HTML5 Video Element */}
+      <video
+        ref={videoRef}
+        onTimeUpdate={onTimeUpdate}
+        onEnded={onEnded}
+        style={{
+          display: isVideo && !isSecondScreenConnected.value ? 'block' : 'none',
+          maxWidth: '100%',
+          maxHeight: '100%',
+          aspectRatio: '16/9'
+        }}
+      />
+
+      {/* Standalone MP3/Audio Display (Only when NOT on second screen) */}
+      {isAudio && !isSecondScreenConnected.value && (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '32px',
+          textAlign: 'center',
+          width: '100%',
+          height: '100%'
+        }}>
+          <div style={{
+            width: '64px',
+            height: '64px',
+            borderRadius: '50%',
+            background: 'rgba(255, 42, 95, 0.15)',
+            border: '2px solid rgba(255, 42, 95, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: '16px',
+            boxShadow: '0 0 20px rgba(255, 42, 95, 0.3)'
+          }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--neon-coral)" strokeWidth="2">
+              <path d="M9 18V5l12-2v13" />
+              <circle cx="6" cy="18" r="3" />
+              <circle cx="18" cy="16" r="3" />
+            </svg>
+          </div>
+          <div style={{ fontSize: '20px', fontWeight: 800, color: '#fff', marginBottom: '4px' }}>
+            {track.title}
+          </div>
+          <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+            {track.artist}
+          </div>
+          {track.singerName && (
+            <div className="badge badge-coral" style={{ fontSize: '11px', padding: '3px 10px' }}>
+              🎤 {track.singerName}
+            </div>
+          )}
+        </div>
       )}
 
       {/* YouTube Video Embed (Only when NOT on second screen) */}

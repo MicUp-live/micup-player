@@ -75,7 +75,12 @@ describe('Party State Integration', () => {
     const transport = new MockTransport();
     await startPartyHost('TEST2', transport);
 
+    // Register guest
+    transport.simulatePeerMessage(createHelloMessage({ clientId: 'guest-1', singer: 'Jessica' }));
+
     const songMsg = createAddSongMessage({
+      clientId: 'guest-1',
+      sessionId: partySessionId.value,
       singer: 'Jessica',
       title: 'Since U Been Gone',
       artist: 'Kelly Clarkson',
@@ -98,7 +103,12 @@ describe('Party State Integration', () => {
     const transport = new MockTransport();
     await startPartyHost('TEST3', transport);
 
+    // Register guest
+    transport.simulatePeerMessage(createHelloMessage({ clientId: 'guest-2', singer: 'Dave' }));
+
     const manualMsg = createAddSongMessage({
+      clientId: 'guest-2',
+      sessionId: partySessionId.value,
       singer: 'Dave',
       title: 'Wonderwall',
       artist: 'Oasis',
@@ -125,7 +135,12 @@ describe('Party State Integration', () => {
     const transport = new MockTransport();
     await startPartyHost('TEST4', transport);
 
+    // Register guest
+    transport.simulatePeerMessage(createHelloMessage({ clientId: 'guest-3', singer: 'Sam' }));
+
     const songMsg = createAddSongMessage({
+      clientId: 'guest-3',
+      sessionId: partySessionId.value,
       requestId: 'req-unique-12345',
       singer: 'Sam',
       title: 'Sweet Caroline',
@@ -164,7 +179,10 @@ describe('Party State Integration', () => {
     const transport = new MockTransport();
     await startPartyHost('TEST6', transport);
 
-    const sfxMsg = createSfxMessage('applause', 'Sarah');
+    // Register guest
+    transport.simulatePeerMessage(createHelloMessage({ clientId: 'guest-4', singer: 'Sarah' }));
+
+    const sfxMsg = createSfxMessage('applause', 'Sarah', 'guest-4', partySessionId.value);
     transport.simulatePeerMessage(sfxMsg);
 
     assert.ok(partyActivityLogs.value.some(log => log.text.includes('Sarah triggered applause')));

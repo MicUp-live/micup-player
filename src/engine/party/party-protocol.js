@@ -159,13 +159,15 @@ export function createQueueUpdateMessage(queue = [], currentTrack = null, revisi
 /**
  * Create TRIGGER_SFX message (Guest -> Host)
  */
-export function createSfxMessage(pad, sender = 'Guest') {
+export function createSfxMessage(pad, sender = 'Guest', clientId = '', sessionId = '') {
   return {
     action: PartyAction.TRIGGER_SFX,
     payload: {
       id: `sfx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       pad: String(pad).toLowerCase().trim(),
       sender: String(sender || 'Guest').trim().slice(0, 40),
+      clientId: String(clientId || ''),
+      sessionId: String(sessionId || ''),
       timestamp: Date.now()
     }
   };

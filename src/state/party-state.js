@@ -95,6 +95,12 @@ export async function startPartyHost(preferredCode = null, customTransport = nul
     },
     onPeersChange: (count) => {
       connectedPeersCount.value = count;
+    },
+    onDisconnected: () => {
+      isPartyActive.value = false;
+      connectedPeersCount.value = 0;
+      partySessionId.value = '';
+      addPartyLog('🔌 Host disconnected from party broker');
     }
   });
 

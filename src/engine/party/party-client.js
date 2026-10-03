@@ -15,7 +15,9 @@ export class PartyClient {
     onQueueUpdate = null,
     onConnected = null,
     onDisconnected = null,
-    onSongAck = null
+    onSongAck = null,
+    onConnectionFailed = null,
+    maxHandshakeAttempts = 3
   } = {}) {
     this.brokerId = brokerId;
     this.transport = transport || new MqttPartyTransport({ isHost: false, brokerId });
@@ -23,6 +25,8 @@ export class PartyClient {
     this.onConnected = onConnected;
     this.onDisconnected = onDisconnected;
     this.onSongAck = onSongAck;
+    this.onConnectionFailed = onConnectionFailed;
+    this.maxHandshakeAttempts = maxHandshakeAttempts;
 
     this.clientId = `guest_${Math.random().toString(36).substring(2, 9)}`;
     this.roomCode = null;
@@ -30,12 +34,14 @@ export class PartyClient {
     this.sessionId = null;
     this.revision = 0;
     this.isConnected = false;
+    this.isBrokerConnected = false;
     this.isSubscribed = false;
     this.queue = [];
     this.currentTrack = null;
 
     this.pendingHelloNonce = null;
     this.handshakeTimeoutId = null;
+    this.handshakeAttempts = 0;
 
     this.setupTransportListeners();
   }
@@ -60,6 +66,7 @@ export class PartyClient {
           }
 
           this.isConnected = true;
+          this.handshakeAttempts = 0;
           this.sessionId = payload.sessionId || null;
           this.revision = payload.revision || 1;
           this.queue = payload.queue || [];
@@ -115,7 +122,9 @@ export class PartyClient {
 
     this.transport.on('disconnected', () => {
       this.isConnected = false;
+      this.isBrokerConnected = false;
       this.isSubscribed = false;
+      this.handshakeAttempts = 0;
       if (this.handshakeTimeoutId) {
         clearTimeout(this.handshakeTimeoutId);
         this.handshakeTimeoutId = null;
@@ -131,6 +140,7 @@ export class PartyClient {
    */
   performHandshake() {
     this.pendingHelloNonce = generateNonce();
+    this.handshakeAttempts = (this.handshakeAttempts || 0) + 1;
     const helloMsg = createHelloMessage({
       clientId: this.clientId,
       singer: this.singerName,
@@ -140,14 +150,53 @@ export class PartyClient {
 
     this.transport.send(helloMsg, 1);
 
-    // Timeout if host doesn't respond within 5 seconds
+    // Timeout if host doesn't respond within 4.5 seconds
     if (this.handshakeTimeoutId) clearTimeout(this.handshakeTimeoutId);
     this.handshakeTimeoutId = setTimeout(() => {
-      if (!this.isConnected && this.isSubscribed) {
-        console.warn('Host handshake timed out, retrying HELLO...');
-        this.performHandshake();
-      }
+      this.handleHandshakeTimeout();
     }, 4500);
+
+    if (this.handshakeTimeoutId && typeof this.handshakeTimeoutId.unref === 'function') {
+      this.handshakeTimeoutId.unref();
+    }
+  }
+
+  handleHandshakeTimeout() {
+    if (!this.isConnected && this.isSubscribed) {
+      if (this.handshakeAttempts < this.maxHandshakeAttempts) {
+        console.warn(`Host handshake timed out (attempt ${this.handshakeAttempts}/${this.maxHandshakeAttempts}), retrying HELLO...`);
+        this.performHandshake();
+      } else {
+        console.warn('Host handshake timed out: no host responded in room');
+        if (typeof this.onConnectionFailed === 'function') {
+          this.onConnectionFailed(new Error('Party host did not respond in room. Please verify room code or retry.'));
+        }
+      }
+    }
+  }
+
+  /**
+   * Disconnect and clean up resources
+   */
+  destroy() {
+    this.isConnected = false;
+    this.isBrokerConnected = false;
+    this.isSubscribed = false;
+    if (this.handshakeTimeoutId) {
+      clearTimeout(this.handshakeTimeoutId);
+      this.handshakeTimeoutId = null;
+    }
+    if (this.transport && typeof this.transport.disconnect === 'function') {
+      this.transport.disconnect();
+    }
+  }
+
+  /**
+   * Manually retry handshake if timed out
+   */
+  retryHandshake() {
+    this.handshakeAttempts = 0;
+    this.performHandshake();
   }
 
   /**
@@ -160,8 +209,13 @@ export class PartyClient {
       this.brokerId = brokerId;
     }
 
+    this.isConnected = false;
+    this.isBrokerConnected = false;
+    this.isSubscribed = false;
+    this.handshakeAttempts = 0;
+
     await this.transport.connect(this.roomCode, { brokerId: this.brokerId });
-    this.isConnected = true;
+    this.isBrokerConnected = true;
     this.isSubscribed = true;
 
     // Send peer join announcement for immediate backward compatibility
@@ -211,7 +265,7 @@ export class PartyClient {
    */
   triggerSfx(pad) {
     if (!this.isSubscribed && !this.isConnected) return;
-    const msg = createSfxMessage(pad, this.singerName);
+    const msg = createSfxMessage(pad, this.singerName, this.clientId, this.sessionId);
     this.transport.send(msg, 1);
   }
 

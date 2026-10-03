@@ -2,17 +2,21 @@ import { render } from 'preact';
 import { useState, useEffect, useRef } from 'preact/hooks';
 import { CDGRenderer, CDG_WIDTH, CDG_HEIGHT } from './engine/cdg/cdg-renderer.js';
 import { STAGE_CHANNEL_NAME } from './engine/display/second-screen.js';
+import { StagePlaybackController } from './engine/display/stage-playback-controller.js';
 import { QRCodeView } from './components/QRCodeView.jsx';
 import { parseYouTubeMessage } from './engine/youtube/youtube-player-controller.js';
 import { soundPads } from './engine/sfx/sound-pads.js';
+import { AudioEngine } from './engine/audio/audio-engine.js';
 
 function StageApp() {
   const [state, setState] = useState({
-    mediaType: 'idle', // 'idle' | 'cdg' | 'video' | 'youtube'
+    mediaType: 'idle', // 'idle' | 'cdg' | 'video' | 'youtube' | 'audio'
+    trackId: null,
     title: '',
     artist: '',
     singerName: '',
     semitones: 0,
+    volume: 1.0,
     isPlaying: false,
     currentTime: 0,
     duration: 0,
@@ -29,35 +33,48 @@ function StageApp() {
   const videoRef = useRef(null);
   const youtubeRef = useRef(null);
   const cdgRendererRef = useRef(null);
-  const lastPlayingStateRef = useRef(null);
   const channelRef = useRef(null);
+  const activeTrackIdRef = useRef(null);
+  const stageAudioEngineRef = useRef(null);
+  const controllerRef = useRef(null);
+
+  if (!stageAudioEngineRef.current && typeof window !== 'undefined') {
+    stageAudioEngineRef.current = new AudioEngine();
+  }
 
   if (!channelRef.current) {
     channelRef.current = new BroadcastChannel(STAGE_CHANNEL_NAME);
   }
   const channel = channelRef.current;
 
+  if (!controllerRef.current) {
+    controllerRef.current = new StagePlaybackController({
+      channel,
+      videoRef,
+      youtubeRef,
+      canvasRef,
+      cdgRendererRef,
+      audioEngineRef: stageAudioEngineRef,
+      onStateChange: (updated) => {
+        setState(prev => ({ ...prev, ...updated }));
+        if (updated.trackId !== undefined) {
+          activeTrackIdRef.current = updated.trackId;
+        }
+      }
+    });
+  }
+
   // Unlock audio playback on first user gesture to satisfy browser autoplay policies
   const unlockAudio = () => {
     if (!hasInteracted) {
       setHasInteracted(true);
     }
+    if (stageAudioEngineRef.current) {
+      stageAudioEngineRef.current.init().catch(() => {});
+    }
     if (!state.stageAudioMuted) {
-      if (youtubeRef.current?.contentWindow) {
-        youtubeRef.current.contentWindow.postMessage(JSON.stringify({
-          event: 'command',
-          func: 'unMute',
-          args: []
-        }), '*');
-        youtubeRef.current.contentWindow.postMessage(JSON.stringify({
-          event: 'command',
-          func: 'setVolume',
-          args: [100]
-        }), '*');
-      }
-      if (videoRef.current) {
-        videoRef.current.muted = false;
-      }
+      controllerRef.current?.applyMute(false);
+      controllerRef.current?.applyVolume(typeof state.volume === 'number' ? state.volume : 1.0);
     }
   };
 
@@ -70,7 +87,7 @@ function StageApp() {
       window.removeEventListener('click', handleUserGesture);
       window.removeEventListener('keydown', handleUserGesture);
     };
-  }, [state.stageAudioMuted, hasInteracted]);
+  }, [state.stageAudioMuted, state.volume, hasInteracted]);
 
   // Alert host immediately if this stage window is closed or refreshed, and send heartbeats
   useEffect(() => {
@@ -96,35 +113,7 @@ function StageApp() {
   // Listen for YouTube iframe player events and forward playback state to host
   useEffect(() => {
     const handleYouTubeMsg = (event) => {
-      const parsed = parseYouTubeMessage(event.data);
-      if (!parsed) return;
-
-      if (parsed.type === 'stateChange') {
-        if (parsed.state === 'playing') {
-          channel.postMessage({ type: 'STAGE_PLAY_STATE', payload: { isPlaying: true } });
-          setState(prev => ({ ...prev, isPlaying: true }));
-        } else if (parsed.state === 'paused') {
-          channel.postMessage({ type: 'STAGE_PLAY_STATE', payload: { isPlaying: false } });
-          setState(prev => ({ ...prev, isPlaying: false }));
-        } else if (parsed.state === 'ended') {
-          channel.postMessage({ type: 'STAGE_PLAYBACK_ENDED' });
-        }
-      } else if (parsed.type === 'timeUpdate') {
-        channel.postMessage({
-          type: 'STAGE_TIME_UPDATE',
-          payload: {
-            currentTime: parsed.currentTime,
-            duration: parsed.duration,
-            isPlaying: parsed.playerState === 1
-          }
-        });
-        setState(prev => ({
-          ...prev,
-          currentTime: parsed.currentTime,
-          duration: parsed.duration || prev.duration,
-          isPlaying: parsed.playerState === 1
-        }));
-      }
+      controllerRef.current?.handleYouTubeMessage(event);
     };
 
     window.addEventListener('message', handleYouTubeMsg);
@@ -154,115 +143,23 @@ function StageApp() {
     channel.postMessage({ type: 'STAGE_READY' });
 
     channel.onmessage = (e) => {
-      const { type, payload } = e.data;
+      const data = e.data;
+      if (!data || typeof data !== 'object') return;
 
-      if (type === 'STATE_UPDATE') {
-        setState(prev => ({ ...prev, ...payload }));
+      // Delegate playback, routing, and media synchronization to StagePlaybackController
+      controllerRef.current?.handleMessage(data);
 
-        // Handle audio mute routing from host
-        if (typeof payload.stageAudioMuted === 'boolean') {
-          if (youtubeRef.current?.contentWindow) {
-            youtubeRef.current.contentWindow.postMessage(JSON.stringify({
-              event: 'command',
-              func: payload.stageAudioMuted ? 'mute' : 'unMute',
-              args: []
-            }), '*');
-          }
-          if (videoRef.current) {
-            videoRef.current.muted = payload.stageAudioMuted;
-          }
-        }
-
-        if (payload.mediaType === 'video' && payload.videoUrl && videoRef.current) {
-          if (videoRef.current.src !== payload.videoUrl) {
-            videoRef.current.src = payload.videoUrl;
-            videoRef.current.muted = Boolean(payload.stageAudioMuted);
-          }
-          if (payload.isPlaying) {
-            videoRef.current.play().catch(() => {});
-          } else {
-            videoRef.current.pause();
-          }
-        }
-      } else if (type === 'CDG_LOAD') {
-        if (!cdgRendererRef.current && canvasRef.current) {
-          cdgRendererRef.current = new CDGRenderer(canvasRef.current);
-        }
-        if (cdgRendererRef.current) {
-          cdgRendererRef.current.loadData(payload);
-        }
-      } else if (type === 'STAGE_PLAY') {
-        if (youtubeRef.current?.contentWindow) {
-          youtubeRef.current.contentWindow.postMessage(JSON.stringify({
-            event: 'command',
-            func: 'playVideo',
-            args: []
-          }), '*');
-        }
-        if (videoRef.current) {
-          videoRef.current.play().catch(() => {});
-        }
-        setState(prev => ({ ...prev, isPlaying: true }));
-      } else if (type === 'STAGE_PAUSE') {
-        if (youtubeRef.current?.contentWindow) {
-          youtubeRef.current.contentWindow.postMessage(JSON.stringify({
-            event: 'command',
-            func: 'pauseVideo',
-            args: []
-          }), '*');
-        }
-        if (videoRef.current) {
-          videoRef.current.pause();
-        }
-        setState(prev => ({ ...prev, isPlaying: false }));
-      } else if (type === 'STAGE_SEEK') {
-        if (youtubeRef.current?.contentWindow) {
-          youtubeRef.current.contentWindow.postMessage(JSON.stringify({
-            event: 'command',
-            func: 'seekTo',
-            args: [payload.time, true]
-          }), '*');
-        }
-        if (videoRef.current) {
-          videoRef.current.currentTime = payload.time;
-        }
-        if (cdgRendererRef.current) {
-          cdgRendererRef.current.syncToTime(payload.time);
-        }
-      } else if (type === 'TIME_SYNC') {
-        if (cdgRendererRef.current) {
-          cdgRendererRef.current.syncToTime(payload.time);
-        }
-        if (videoRef.current && Math.abs(videoRef.current.currentTime - payload.time) > 0.3) {
-          videoRef.current.currentTime = payload.time;
-        }
-        if (youtubeRef.current?.contentWindow) {
-          if (payload.isSeek) {
-            youtubeRef.current.contentWindow.postMessage(JSON.stringify({
-              event: 'command',
-              func: 'seekTo',
-              args: [payload.time, true]
-            }), '*');
-          }
-          if (lastPlayingStateRef.current !== payload.isPlaying) {
-            lastPlayingStateRef.current = payload.isPlaying;
-            youtubeRef.current.contentWindow.postMessage(JSON.stringify({
-              event: 'command',
-              func: payload.isPlaying ? 'playVideo' : 'pauseVideo',
-              args: []
-            }), '*');
-          }
-        }
-      } else if (type === 'ANNOUNCEMENT') {
-        setAnnouncement(payload.text);
-        setTimeout(() => setAnnouncement(null), payload.durationMs || 5000);
+      const { type, payload } = data;
+      if (type === 'ANNOUNCEMENT') {
+        setAnnouncement(payload?.text);
+        setTimeout(() => setAnnouncement(null), payload?.durationMs || 5000);
       } else if (type === 'PARTY_STATE') {
         setState(prev => ({
           ...prev,
-          isPartyActive: Boolean(payload.isPartyActive),
-          partyRoomCode: payload.partyRoomCode || '',
-          partyBroker: payload.partyBroker || 'hivemq',
-          partySessionId: payload.partySessionId || ''
+          isPartyActive: Boolean(payload?.isPartyActive),
+          partyRoomCode: payload?.partyRoomCode || '',
+          partyBroker: payload?.partyBroker || 'hivemq',
+          partySessionId: payload?.partySessionId || ''
         }));
       } else if (type === 'STAGE_SFX') {
         if (payload?.padId) {
@@ -576,12 +473,79 @@ function StageApp() {
       }}>
         <video
           ref={videoRef}
+          onTimeUpdate={(e) => {
+            controllerRef.current?.handleVideoTimeUpdate(e.target.currentTime, e.target.duration || 0);
+          }}
+          onPlay={() => {
+            controllerRef.current?.handleVideoPlayState(true);
+          }}
+          onPause={() => {
+            controllerRef.current?.handleVideoPlayState(false);
+          }}
+          onEnded={() => {
+            controllerRef.current?.handleVideoEnded();
+          }}
           style={{
             maxWidth: '100vw',
             maxHeight: '100vh',
             objectFit: 'contain'
           }}
         />
+      </div>
+
+      {/* ACTIVE PLAYBACK (Standalone Audio) */}
+      <div style={{
+        display: state.mediaType === 'audio' ? 'flex' : 'none',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: '100%',
+        height: '100%',
+        textAlign: 'center',
+        position: 'relative'
+      }}>
+        <div style={{
+          width: '96px',
+          height: '96px',
+          borderRadius: '50%',
+          background: 'rgba(255, 42, 95, 0.2)',
+          border: '2px solid rgba(255, 42, 95, 0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: '24px',
+          boxShadow: '0 0 40px rgba(255, 42, 95, 0.4)'
+        }}>
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#ff2a5f" strokeWidth="2">
+            <path d="M9 18V5l12-2v13" />
+            <circle cx="6" cy="18" r="3" />
+            <circle cx="18" cy="16" r="3" />
+          </svg>
+        </div>
+        <div style={{ fontSize: '42px', fontWeight: 900, color: '#fff', marginBottom: '8px' }}>
+          {state.title}
+        </div>
+        <div style={{ fontSize: '24px', color: '#cbd5e1', marginBottom: '24px' }}>
+          {state.artist}
+        </div>
+        {state.singerName && (
+          <div style={{
+            background: 'rgba(18, 21, 30, 0.92)',
+            border: '1px solid rgba(255, 42, 95, 0.4)',
+            borderRadius: '16px',
+            padding: '12px 24px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '12px'
+          }}>
+            <span style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#ff2a5f', fontWeight: 800 }}>
+              PERFORMER:
+            </span>
+            <span style={{ fontSize: '22px', fontWeight: 800, color: '#fff' }}>
+              {state.singerName}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ACTIVE PLAYBACK (YouTube Video) */}
@@ -595,6 +559,7 @@ function StageApp() {
           position: 'relative'
         }}>
           <iframe
+            key={state.trackId || state.videoId || 'yt-frame'}
             ref={youtubeRef}
             src={`https://www.youtube.com/embed/${state.videoId}?autoplay=1&enablejsapi=1&controls=0&rel=0&origin=${typeof window !== 'undefined' ? encodeURIComponent(window.location.origin) : ''}`}
             title={state.title}

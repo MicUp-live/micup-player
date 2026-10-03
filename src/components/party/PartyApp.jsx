@@ -12,7 +12,8 @@ export function PartyApp() {
   });
 
   const [activeTab, setActiveTab] = useState('request'); // 'request' | 'queue' | 'soundboard'
-  const [connectionStatus, setConnectionStatus] = useState('disconnected'); // 'disconnected' | 'connecting' | 'handshaking' | 'connected'
+  const [connectionStatus, setConnectionStatus] = useState('disconnected'); // 'disconnected' | 'connecting' | 'handshaking' | 'connected' | 'failed'
+  const [connectionError, setConnectionError] = useState(null);
   const [client, setClient] = useState(null);
 
   // Authoritative host queue snapshot + local outbox
@@ -85,16 +86,23 @@ export function PartyApp() {
     setSingerName(name);
     localStorage.setItem('micup_party_singer', name);
 
+    setConnectionError(null);
     setConnectionStatus('connecting');
 
     const partyClient = new PartyClient({
       brokerId: targetBroker || brokerId,
       onConnected: ({ queue: initialQueue, currentTrack: playing, sessionId: hostSession }) => {
         setConnectionStatus('connected');
+        setConnectionError(null);
         setConfirmedQueue(initialQueue || []);
         setCurrentTrack(playing || null);
         if (hostSession) setSessionId(hostSession);
         showToast('🎉 Connected to living room stage!');
+      },
+      onConnectionFailed: (err) => {
+        setConnectionStatus('failed');
+        setConnectionError(err?.message || 'Host did not respond. Check room code and ensure host is active.');
+        showToast(`❌ Connection failed: ${err?.message || 'Host did not respond'}`);
       },
       onQueueUpdate: (newQueue, playingTrack) => {
         const updated = Array.isArray(newQueue) ? newQueue : [];
@@ -142,8 +150,9 @@ export function PartyApp() {
       setConnectionStatus('handshaking');
     } catch (err) {
       console.error('Failed to join party:', err);
-      setConnectionStatus('disconnected');
-      alert(`Could not connect to party room (${err.message || 'Check room code'}). Please try again.`);
+      setConnectionStatus('failed');
+      setConnectionError(err?.message || 'Could not connect to party room');
+      partyClient.disconnect();
     }
   };
 
@@ -172,7 +181,7 @@ export function PartyApp() {
 
   const handleSubmitSong = (e) => {
     if (e) e.preventDefault();
-    if (!client || (connectionStatus !== 'connected' && connectionStatus !== 'handshaking')) {
+    if (!client || connectionStatus !== 'connected') {
       alert('Not connected to party host. Please connect to a party room first.');
       return;
     }
@@ -207,7 +216,8 @@ export function PartyApp() {
         title = q;
         artist = customArtist.trim() || 'Various';
       }
-      source = 'youtube';
+      source = 'request';
+      youtubeId = null;
     }
     // 4. Custom manual entry
     else if (customTitle.trim()) {
@@ -302,7 +312,7 @@ export function PartyApp() {
   };
 
   const handleTriggerSfx = (pad, emoji, label) => {
-    if (!client || (connectionStatus !== 'connected' && connectionStatus !== 'handshaking')) return;
+    if (!client || connectionStatus !== 'connected') return;
 
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
       navigator.vibrate(40);
@@ -373,11 +383,13 @@ export function PartyApp() {
             </span>
           </div>
         ) : (
-          <span className="badge badge-amber" style={{ fontSize: '11px', padding: '4px 8px' }}>
+          <span className={`badge ${connectionStatus === 'failed' ? 'badge-coral' : 'badge-amber'}`} style={{ fontSize: '11px', padding: '4px 8px' }}>
             {connectionStatus === 'connecting'
               ? 'CONNECTING...'
               : connectionStatus === 'handshaking'
               ? 'HANDSHAKING...'
+              : connectionStatus === 'failed'
+              ? 'CONNECTION FAILED'
               : 'DISCONNECTED'}
           </span>
         )}
@@ -385,7 +397,7 @@ export function PartyApp() {
 
       {/* Main Container */}
       <main style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {connectionStatus === 'disconnected' ? (
+        {connectionStatus !== 'connected' ? (
           /* Join Screen */
           <div style={{
             background: 'var(--bg-elevated)',
@@ -405,6 +417,61 @@ export function PartyApp() {
                 Pick songs & blast reactions from your phone on any network!
               </p>
             </div>
+
+            {/* Visible Handshake Failure Feedback */}
+            {connectionError && (
+              <div style={{
+                background: 'rgba(255, 42, 95, 0.15)',
+                border: '1px solid rgba(255, 42, 95, 0.6)',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                color: '#fff',
+                fontSize: '13px',
+                lineHeight: 1.4
+              }}>
+                <div style={{ fontWeight: 800, color: 'var(--neon-coral)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                  <span>⚠️</span> Connection Failed
+                </div>
+                <div>{connectionError}</div>
+              </div>
+            )}
+
+            {/* Connecting / Handshaking Progress */}
+            {(connectionStatus === 'connecting' || connectionStatus === 'handshaking') && (
+              <div style={{
+                background: 'rgba(245, 158, 11, 0.12)',
+                border: '1px solid rgba(245, 158, 11, 0.5)',
+                borderRadius: '10px',
+                padding: '12px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                color: 'var(--neon-amber)',
+                fontSize: '13px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="pulse-dot" style={{ width: '6px', height: '6px', background: 'var(--neon-amber)' }} />
+                  <span>{connectionStatus === 'connecting' ? 'Connecting to broker...' : 'Handshaking with host...'}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (client) client.disconnect();
+                    setConnectionStatus('disconnected');
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#fff',
+                    textDecoration: 'underline',
+                    fontSize: '12px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
 
             <div>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '6px' }}>

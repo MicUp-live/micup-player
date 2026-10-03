@@ -14,6 +14,12 @@ export const audioLevel = signal(0);
 
 // Playout Queue & Singer Rotation
 export const queue = signal([]);
+export const activeQueueItemId = signal(null);
+
+export const activeQueueItem = computed(() => {
+  if (!activeQueueItemId.value) return null;
+  return queue.value.find(item => item.id === activeQueueItemId.value) || null;
+});
 
 export const activeTab = signal('queue'); // 'queue' | 'library' | 'pads'
 export const isSecondScreenConnected = signal(false);
@@ -24,7 +30,10 @@ export const audioOutputTarget = signal('stage'); // 'stage' | 'host'
 
 // Computed helpers
 export const upNextSinger = computed(() => {
-  return queue.value.length > 0 ? queue.value[0] : null;
+  if (!activeQueueItemId.value) {
+    return queue.value.length > 0 ? queue.value[0] : null;
+  }
+  return queue.value.find(item => item.id !== activeQueueItemId.value) || null;
 });
 
 export const remainingTime = computed(() => {
