@@ -371,6 +371,92 @@ describe('Playback Ownership & Stage Playback Controller Integration', () => {
     }
   });
 
+  it('detects YouTube completion via infoDelivery playerState:0 and near-duration fallback, deduplicating ended events', () => {
+    const origBroadcastChannel = globalThis.BroadcastChannel;
+    globalThis.BroadcastChannel = MockBroadcastChannel;
+    MockBroadcastChannel.channels = [];
+
+    try {
+      const hostController = new SecondScreenController();
+      const stageChannel = new MockBroadcastChannel(STAGE_CHANNEL_NAME);
+      const mockYouTube = createMockYouTubeWindow();
+
+      const stageController = new StagePlaybackController({
+        channel: stageChannel,
+        youtubeRef: mockYouTube
+      });
+      stageChannel.onmessage = (e) => stageController.handleMessage(e.data);
+
+      let endedCalls = 0;
+      let lastEndedPayload = null;
+      hostController.onStagePlaybackEnded = (payload) => {
+        endedCalls++;
+        lastEndedPayload = payload;
+      };
+
+      // 1. Stage connects and starts YouTube performance
+      stageChannel.postMessage({ type: 'STAGE_READY' });
+      hostController.sendState({
+        mediaType: 'youtube',
+        videoId: 'video-test-123',
+        trackId: 'track-yt-ended-test',
+        isPlaying: true
+      });
+
+      // Verification: Stage controller sends listening handshake to iframe
+      const listeningMsgs = mockYouTube.sentCommands.filter(m => m.event === 'listening');
+      assert.ok(listeningMsgs.length >= 1, 'Stage controller must send listening handshake to YouTube contentWindow');
+
+      // 2. YouTube reports infoDelivery during active playback
+      stageController.handleYouTubeMessage({
+        event: 'infoDelivery',
+        info: { currentTime: 120.0, duration: 200.0, playerState: 1 }
+      });
+      assert.equal(endedCalls, 0);
+      assert.equal(stageController.isPlaying, true);
+
+      // 3. YouTube finishes song and emits infoDelivery with playerState: 0
+      const endedHandled = stageController.handleYouTubeMessage({
+        event: 'infoDelivery',
+        info: { currentTime: 200.0, duration: 200.0, playerState: 0 }
+      });
+      assert.equal(endedHandled, true);
+      assert.equal(endedCalls, 1, 'STAGE_PLAYBACK_ENDED must be received on infoDelivery playerState: 0');
+      assert.equal(lastEndedPayload?.trackId, 'track-yt-ended-test');
+      assert.equal(stageController.isPlaying, false);
+
+      // 4. Duplicate infoDelivery at end of stream must not fire repeated STAGE_PLAYBACK_ENDED
+      stageController.handleYouTubeMessage({
+        event: 'infoDelivery',
+        info: { currentTime: 200.0, duration: 200.0, playerState: 0 }
+      });
+      assert.equal(endedCalls, 1, 'Duplicate infoDelivery playerState: 0 must be deduplicated');
+
+      // 5. Test near-duration fallback on next track
+      hostController.sendState({
+        mediaType: 'youtube',
+        videoId: 'video-test-456',
+        trackId: 'track-yt-fallback-test',
+        isPlaying: true
+      });
+      assert.equal(stageController.activeTrackId, 'track-yt-fallback-test');
+
+      // Near-duration (currentTime 179.8 of 180.0, playerState 1) triggers completion
+      stageController.handleYouTubeMessage({
+        event: 'infoDelivery',
+        info: { currentTime: 179.8, duration: 180.0, playerState: 1 }
+      });
+      assert.equal(endedCalls, 2, 'Near-duration fallback must trigger STAGE_PLAYBACK_ENDED');
+      assert.equal(lastEndedPayload?.trackId, 'track-yt-fallback-test');
+
+      hostController.destroy();
+      stageChannel.close();
+    } finally {
+      globalThis.BroadcastChannel = origBroadcastChannel;
+      MockBroadcastChannel.channels = [];
+    }
+  });
+
   it('supplies trackId and volume in initial connection snapshot and enforces track validation on host', () => {
     const origBroadcastChannel = globalThis.BroadcastChannel;
     globalThis.BroadcastChannel = MockBroadcastChannel;

@@ -261,6 +261,12 @@ export function StageMonitor({ canvasRef, videoRef, youtubeRef, onDropFile, onTi
           title={track.title}
           allow="autoplay; encrypted-media"
           allowFullScreen
+          onLoad={() => {
+            try {
+              youtubeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
+              youtubeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening' }), '*');
+            } catch (e) {}
+          }}
           style={{
             width: 'calc(100% - 32px)',
             maxWidth: '800px',

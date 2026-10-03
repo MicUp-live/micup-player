@@ -169,7 +169,7 @@ export function App() {
     secondScreen.onStagePlaybackEnded = (payload) => {
       if (!isSecondScreenConnected.value) return;
       const activeId = currentTrack.value?.trackId || currentTrack.value?.id;
-      if (activeId && (!payload?.trackId || payload.trackId !== activeId)) {
+      if (!activeId || !payload?.trackId || payload.trackId !== activeId) {
         console.warn('Ignoring stage playback ended for mismatched or missing track:', payload?.trackId, 'active:', activeId);
         return;
       }
@@ -587,6 +587,10 @@ export function App() {
    * Next Song / Finish Performance
    */
   const handleNextSong = () => {
+    if (!currentTrack.value && !activeQueueItemId.value) {
+      return;
+    }
+
     if (autoApplause.value) {
       soundPads.play('applause');
     }

@@ -39,6 +39,7 @@ export class StagePlaybackController {
     this.semitones = 0;
     this.stageAudioMuted = false;
     this.videoUrl = null;
+    this.hasEndedForTrack = false;
   }
 
   get videoElement() {
@@ -120,6 +121,7 @@ export class StagePlaybackController {
 
     if (trackChanged || videoChanged || mediaChanged) {
       this.playbackGeneration++;
+      this.hasEndedForTrack = false;
     }
 
     if (payload.trackId !== undefined) {
@@ -173,6 +175,11 @@ export class StagePlaybackController {
       this.sendYouTubeCommand('pauseVideo');
     }
 
+    // If active media is YouTube, establish listening handshake
+    if (payload.mediaType === 'youtube') {
+      this.sendYouTubeListening();
+    }
+
     // 2. Active video branch
     if (payload.mediaType === 'video' && payload.videoUrl) {
       this.videoUrl = payload.videoUrl;
@@ -215,6 +222,7 @@ export class StagePlaybackController {
     if (this.mediaType === 'video') {
       this.videoElement?.play()?.catch?.(() => {});
     } else if (this.mediaType === 'youtube') {
+      this.sendYouTubeListening();
       this.sendYouTubeCommand('playVideo');
     }
 
@@ -349,6 +357,16 @@ export class StagePlaybackController {
     }
   }
 
+  sendYouTubeListening() {
+    const win = this.youtubeContentWindow;
+    if (win && typeof win.postMessage === 'function') {
+      try {
+        win.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
+        win.postMessage(JSON.stringify({ event: 'listening' }), '*');
+      } catch (e) {}
+    }
+  }
+
   /**
    * Video element event handlers
    */
@@ -443,6 +461,7 @@ export class StagePlaybackController {
     if (parsed.type === 'stateChange') {
       if (parsed.state === 'playing') {
         this.isPlaying = true;
+        this.hasEndedForTrack = false;
         this.channel.postMessage({
           type: 'STAGE_PLAY_STATE',
           payload: { trackId: currentTrackId, isPlaying: true, generation: currentGen }
@@ -459,11 +478,22 @@ export class StagePlaybackController {
         if (typeof this.onStateChange === 'function') {
           this.onStateChange({ isPlaying: false });
         }
-      } else if (parsed.state === 'ended') {
-        this.channel.postMessage({
-          type: 'STAGE_PLAYBACK_ENDED',
-          payload: { trackId: currentTrackId, generation: currentGen }
-        });
+      } else if (parsed.state === 'ended' || parsed.isEnded) {
+        this.isPlaying = false;
+        if (!this.hasEndedForTrack) {
+          this.hasEndedForTrack = true;
+          this.channel.postMessage({
+            type: 'STAGE_PLAY_STATE',
+            payload: { trackId: currentTrackId, isPlaying: false, generation: currentGen }
+          });
+          this.channel.postMessage({
+            type: 'STAGE_PLAYBACK_ENDED',
+            payload: { trackId: currentTrackId, generation: currentGen }
+          });
+          if (typeof this.onStateChange === 'function') {
+            this.onStateChange({ isPlaying: false });
+          }
+        }
       }
       return true;
     }
@@ -472,13 +502,21 @@ export class StagePlaybackController {
       this.currentTime = parsed.currentTime;
       if (parsed.duration > 0) this.duration = parsed.duration;
 
+      const isPlaying = parsed.playerState === 1 || (parsed.playerState === undefined && !parsed.isEnded && this.isPlaying);
+      if (parsed.playerState === 1) {
+        this.isPlaying = true;
+        this.hasEndedForTrack = false;
+      } else if (parsed.playerState === 2) {
+        this.isPlaying = false;
+      }
+
       this.channel.postMessage({
         type: 'STAGE_TIME_UPDATE',
         payload: {
           trackId: currentTrackId,
           currentTime: parsed.currentTime,
           duration: parsed.duration,
-          isPlaying: parsed.playerState === 1,
+          isPlaying,
           generation: currentGen
         }
       });
@@ -487,9 +525,32 @@ export class StagePlaybackController {
         this.onStateChange({
           currentTime: parsed.currentTime,
           duration: parsed.duration || this.duration,
-          isPlaying: parsed.playerState === 1
+          isPlaying
         });
       }
+
+      // Detect song end via playerState: 0, parsed.isEnded, state: 'ended', or duration reached
+      const isEnded = parsed.isEnded || parsed.playerState === 0 || parsed.state === 'ended' ||
+        (parsed.duration > 0 && parsed.currentTime > 0 && parsed.currentTime >= parsed.duration - 0.3);
+
+      if (isEnded) {
+        this.isPlaying = false;
+        if (!this.hasEndedForTrack) {
+          this.hasEndedForTrack = true;
+          this.channel.postMessage({
+            type: 'STAGE_PLAY_STATE',
+            payload: { trackId: currentTrackId, isPlaying: false, generation: currentGen }
+          });
+          this.channel.postMessage({
+            type: 'STAGE_PLAYBACK_ENDED',
+            payload: { trackId: currentTrackId, generation: currentGen }
+          });
+          if (typeof this.onStateChange === 'function') {
+            this.onStateChange({ isPlaying: false });
+          }
+        }
+      }
+
       return true;
     }
 

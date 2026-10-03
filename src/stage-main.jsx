@@ -565,6 +565,13 @@ function StageApp() {
             title={state.title}
             allow="autoplay; encrypted-media"
             allowFullScreen
+            onLoad={() => {
+              try {
+                youtubeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
+                youtubeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: 'listening' }), '*');
+              } catch (e) {}
+              controllerRef.current?.sendYouTubeListening();
+            }}
             style={{
               width: '100vw',
               height: '100vh',

@@ -114,3 +114,118 @@ test('YouTubePlayerController dispatches commands to target iframe', () => {
     args: [80]
   });
 });
+
+test('parseYouTubeMessage detects completion from infoDelivery playerState 0 and duration', () => {
+  // infoDelivery with playerState: 0
+  const endedInfoMsg = JSON.stringify({
+    event: 'infoDelivery',
+    info: {
+      currentTime: 180.5,
+      duration: 180.5,
+      playerState: 0
+    }
+  });
+  const parsed1 = parseYouTubeMessage(endedInfoMsg);
+  assert.equal(parsed1.type, 'timeUpdate');
+  assert.equal(parsed1.playerState, 0);
+  assert.equal(parsed1.state, 'ended');
+  assert.equal(parsed1.isEnded, true);
+
+  // infoDelivery near duration (within 0.3s)
+  const nearEndMsg = JSON.stringify({
+    event: 'infoDelivery',
+    info: {
+      currentTime: 199.85,
+      duration: 200.0,
+      playerState: 1
+    }
+  });
+  const parsed2 = parseYouTubeMessage(nearEndMsg);
+  assert.equal(parsed2.type, 'timeUpdate');
+  assert.equal(parsed2.isEnded, true);
+
+  // infoDelivery mid-song
+  const midSongMsg = JSON.stringify({
+    event: 'infoDelivery',
+    info: {
+      currentTime: 50.0,
+      duration: 200.0,
+      playerState: 1
+    }
+  });
+  const parsed3 = parseYouTubeMessage(midSongMsg);
+  assert.equal(parsed3.type, 'timeUpdate');
+  assert.equal(parsed3.playerState, 1);
+  assert.equal(parsed3.state, 'playing');
+  assert.equal(parsed3.isEnded, false);
+});
+
+test('YouTubePlayerController triggers onEnded for infoDelivery and deduplicates calls', () => {
+  let endedCount = 0;
+  let stateReceived = null;
+  const sentMessages = [];
+
+  const mockIframe = {
+    contentWindow: {
+      postMessage: (msg) => {
+        sentMessages.push(typeof msg === 'string' ? JSON.parse(msg) : msg);
+      }
+    }
+  };
+
+  const controller = new YouTubePlayerController({
+    onEnded: () => {
+      endedCount++;
+    },
+    onStateChange: (state) => {
+      stateReceived = state;
+    }
+  });
+
+  // 1. Attaching iframe immediately dispatches listening handshake
+  controller.attachIframe(mockIframe);
+  const listeningMsgs = sentMessages.filter(m => m.event === 'listening');
+  assert.ok(listeningMsgs.length >= 1, 'attachIframe must send listening event to iframe');
+
+  // 2. Play Video resets ended flag and sends play command
+  controller.play();
+  assert.ok(sentMessages.some(m => m.event === 'command' && m.func === 'playVideo'));
+
+  // 3. Receive infoDelivery with playerState: 1 (playing)
+  controller.handleWindowMessage({
+    data: JSON.stringify({
+      event: 'infoDelivery',
+      info: { currentTime: 1.0, duration: 180.0, playerState: 1 }
+    })
+  });
+  assert.equal(stateReceived, 'playing');
+  assert.equal(endedCount, 0);
+
+  // 4. Receive infoDelivery with playerState: 0 (ended)
+  controller.handleWindowMessage({
+    data: JSON.stringify({
+      event: 'infoDelivery',
+      info: { currentTime: 180.0, duration: 180.0, playerState: 0 }
+    })
+  });
+  assert.equal(endedCount, 1, 'onEnded must be called when infoDelivery playerState is 0');
+
+  // 5. Subsequent duplicate infoDelivery messages at end of stream must be ignored
+  controller.handleWindowMessage({
+    data: JSON.stringify({
+      event: 'infoDelivery',
+      info: { currentTime: 180.0, duration: 180.0, playerState: 0 }
+    })
+  });
+  assert.equal(endedCount, 1, 'Duplicate ended events must be deduplicated');
+
+  // 6. Starting playback again resets ended flag
+  controller.play();
+  controller.handleWindowMessage({
+    data: JSON.stringify({
+      event: 'infoDelivery',
+      info: { currentTime: 180.0, duration: 180.0, playerState: 0 }
+    })
+  });
+  assert.equal(endedCount, 2, 'New playback cycle allows next onEnded trigger');
+});

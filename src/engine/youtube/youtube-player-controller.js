@@ -44,28 +44,42 @@ export function parseYouTubeMessage(rawData) {
 
   if (!data || typeof data !== 'object') return null;
 
+  // YouTube player states:
+  // -1 = unstarted, 0 = ended, 1 = playing, 2 = paused, 3 = buffering, 5 = cued
+  const stateMap = {
+    '-1': 'unstarted',
+    0: 'ended',
+    1: 'playing',
+    2: 'paused',
+    3: 'buffering',
+    5: 'cued'
+  };
+
   if (data.event === 'onStateChange') {
-    // 0 = ended, 1 = playing, 2 = paused, 3 = buffering, 5 = cued
-    const stateMap = {
-      0: 'ended',
-      1: 'playing',
-      2: 'paused',
-      3: 'buffering',
-      5: 'cued'
-    };
+    const rawState = data.info;
+    const state = stateMap[rawState] || 'unknown';
     return {
       type: 'stateChange',
-      rawState: data.info,
-      state: stateMap[data.info] || 'unknown'
+      rawState,
+      state,
+      isEnded: rawState === 0
     };
   }
 
-  if (data.event === 'infoDelivery' && data.info) {
+  if ((data.event === 'infoDelivery' || data.event === 'initialDelivery') && data.info) {
+    const currentTime = typeof data.info.currentTime === 'number' ? data.info.currentTime : 0;
+    const duration = typeof data.info.duration === 'number' ? data.info.duration : 0;
+    const playerState = typeof data.info.playerState === 'number' ? data.info.playerState : undefined;
+    const state = playerState !== undefined ? (stateMap[playerState] || 'unknown') : undefined;
+    const isEnded = playerState === 0 || (duration > 0 && currentTime > 0 && currentTime >= duration - 0.3);
+
     return {
       type: 'timeUpdate',
-      currentTime: typeof data.info.currentTime === 'number' ? data.info.currentTime : 0,
-      duration: typeof data.info.duration === 'number' ? data.info.duration : 0,
-      playerState: data.info.playerState
+      currentTime,
+      duration,
+      playerState,
+      state,
+      isEnded
     };
   }
 
@@ -84,6 +98,7 @@ export function parseYouTubeMessage(rawData) {
 export class YouTubePlayerController {
   constructor(options = {}) {
     this.iframe = null;
+    this.endedTriggered = false;
     this.onStateChange = options.onStateChange || null;
     this.onTimeUpdate = options.onTimeUpdate || null;
     this.onEnded = options.onEnded || null;
@@ -97,6 +112,24 @@ export class YouTubePlayerController {
 
   attachIframe(iframeEl) {
     this.iframe = iframeEl;
+    this.endedTriggered = false;
+    this.sendListening();
+    if (iframeEl && typeof iframeEl.addEventListener === 'function') {
+      iframeEl.addEventListener('load', () => this.sendListening());
+    }
+  }
+
+  sendListening() {
+    if (this.iframe?.contentWindow && typeof this.iframe.contentWindow.postMessage === 'function') {
+      try {
+        this.iframe.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
+        this.iframe.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
+      } catch (e) {}
+    }
+  }
+
+  resetEnded() {
+    this.endedTriggered = false;
   }
 
   handleWindowMessage(event) {
@@ -105,11 +138,27 @@ export class YouTubePlayerController {
 
     if (parsed.type === 'stateChange') {
       this.onStateChange?.(parsed.state, parsed.rawState);
-      if (parsed.state === 'ended') {
-        this.onEnded?.();
+      if (parsed.state === 'ended' || parsed.isEnded) {
+        if (!this.endedTriggered) {
+          this.endedTriggered = true;
+          this.onEnded?.();
+        }
+      } else if (parsed.state === 'playing') {
+        this.endedTriggered = false;
       }
     } else if (parsed.type === 'timeUpdate') {
+      if (parsed.state) {
+        this.onStateChange?.(parsed.state, parsed.playerState);
+      }
       this.onTimeUpdate?.(parsed.currentTime, parsed.duration);
+      if (parsed.isEnded || parsed.state === 'ended' || parsed.playerState === 0) {
+        if (!this.endedTriggered) {
+          this.endedTriggered = true;
+          this.onEnded?.();
+        }
+      } else if (parsed.playerState === 1) {
+        this.endedTriggered = false;
+      }
     } else if (parsed.type === 'error') {
       this.onError?.(parsed.errorCode, parsed.isEmbedRestricted);
     }
@@ -126,6 +175,8 @@ export class YouTubePlayerController {
   }
 
   play() {
+    this.endedTriggered = false;
+    this.sendListening();
     this.sendCommand('playVideo');
   }
 

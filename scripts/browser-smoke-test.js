@@ -317,6 +317,96 @@ try {
   assert.equal(endedMsgsValid[0].payload.trackId, 'track-yt-B', 'Completion must carry Track B ID');
   console.log('✔ Journey 2 Passed: Provenance validation accepted legitimate Track B completion.');
 
+  // --- JOURNEY 3: REAL YOUTUBE infoDelivery COMPLETION & DEDUPLICATION ---
+  console.log('\n--- Journey 3: Real YouTube infoDelivery Completion on Stage ---');
+
+  // 1. Switch to YouTube Track C
+  await evaluate(`
+    window.__receivedHostMessages = [];
+    window.__testHostChannel.postMessage({
+      type: 'STATE_UPDATE',
+      payload: {
+        mediaType: 'youtube',
+        videoId: 'mockVideoC',
+        trackId: 'track-yt-C',
+        title: 'Track C',
+        isPlaying: true
+      }
+    });
+  `);
+
+  await new Promise(r => setTimeout(r, 600));
+
+  // 2. Dispatch infoDelivery active playback
+  await evaluate(`
+    (() => {
+      const el = document.querySelector('iframe');
+      const timeEvent = new MessageEvent('message', {
+        data: JSON.stringify({
+          event: 'infoDelivery',
+          info: { currentTime: 150.0, duration: 210.0, playerState: 1 }
+        }),
+        source: el.contentWindow
+      });
+      window.dispatchEvent(timeEvent);
+    })()
+  `);
+
+  await new Promise(r => setTimeout(r, 200));
+
+  const timeUpdates = await evaluate(`
+    window.__receivedHostMessages.filter(m => m.type === 'STAGE_TIME_UPDATE');
+  `);
+  assert.ok(timeUpdates.length >= 1, 'Stage must forward STAGE_TIME_UPDATE on infoDelivery');
+  assert.equal(timeUpdates[timeUpdates.length - 1].payload.trackId, 'track-yt-C');
+  assert.equal(timeUpdates[timeUpdates.length - 1].payload.isPlaying, true);
+
+  // 3. Dispatch infoDelivery song finish (playerState: 0)
+  await evaluate(`
+    (() => {
+      const el = document.querySelector('iframe');
+      const finishEvent = new MessageEvent('message', {
+        data: JSON.stringify({
+          event: 'infoDelivery',
+          info: { currentTime: 210.0, duration: 210.0, playerState: 0 }
+        }),
+        source: el.contentWindow
+      });
+      window.dispatchEvent(finishEvent);
+    })()
+  `);
+
+  await new Promise(r => setTimeout(r, 300));
+
+  const endedMsgsC = await evaluate(`
+    window.__receivedHostMessages.filter(m => m.type === 'STAGE_PLAYBACK_ENDED');
+  `);
+  assert.equal(endedMsgsC.length, 1, 'Stage must emit STAGE_PLAYBACK_ENDED upon infoDelivery playerState: 0');
+  assert.equal(endedMsgsC[0].payload.trackId, 'track-yt-C', 'Ended payload must carry Track C ID');
+
+  // 4. Duplicate trailing infoDelivery must be ignored
+  await evaluate(`
+    (() => {
+      const el = document.querySelector('iframe');
+      const dupEvent = new MessageEvent('message', {
+        data: JSON.stringify({
+          event: 'infoDelivery',
+          info: { currentTime: 210.0, duration: 210.0, playerState: 0 }
+        }),
+        source: el.contentWindow
+      });
+      window.dispatchEvent(dupEvent);
+    })()
+  `);
+
+  await new Promise(r => setTimeout(r, 300));
+
+  const endedMsgsCDup = await evaluate(`
+    window.__receivedHostMessages.filter(m => m.type === 'STAGE_PLAYBACK_ENDED');
+  `);
+  assert.equal(endedMsgsCDup.length, 1, 'Duplicate infoDelivery must not produce duplicate ended messages');
+  console.log('✔ Journey 3 Passed: Real YouTube infoDelivery playerState 0 detected completion and deduplicated.');
+
   console.log('\n[Smoke Test] All browser smoke test assertions PASSED.');
 } finally {
   ws.close();
