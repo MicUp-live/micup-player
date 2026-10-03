@@ -8,7 +8,13 @@ import {
   pitchDisplay,
   formattedCurrentTime,
   remainingTime,
-  upNextSinger
+  upNextSinger,
+  knownSingers,
+  addKnownSinger,
+  removeKnownSinger,
+  clearKnownSingers,
+  allShowSingers,
+  currentTrack
 } from './player-state.js';
 
 test('pitchDisplay formats semitones with sharp and flat symbols', () => {
@@ -53,4 +59,51 @@ test('upNextSinger returns the first singer in rotation', () => {
 
   queue.value = [];
   assert.equal(upNextSinger.value, null);
+});
+
+test('addKnownSinger adds new singers, deduplicates case-insensitively, and ignores generic placeholders', () => {
+  clearKnownSingers();
+  assert.deepEqual(knownSingers.value, []);
+
+  // Add new singers
+  addKnownSinger('Alice');
+  addKnownSinger('Bob');
+  assert.equal(knownSingers.value.length, 2);
+  assert.ok(knownSingers.value.includes('Alice'));
+  assert.ok(knownSingers.value.includes('Bob'));
+
+  // Duplicate with different case should not duplicate
+  addKnownSinger('alice');
+  assert.equal(knownSingers.value.length, 2);
+
+  // Generic placeholders should not be saved
+  addKnownSinger('Host Selection');
+  addKnownSinger('Singer');
+  addKnownSinger('Guest');
+  addKnownSinger('   ');
+  assert.equal(knownSingers.value.length, 2);
+
+  // removeKnownSinger
+  removeKnownSinger('Alice');
+  assert.equal(knownSingers.value.length, 1);
+  assert.ok(knownSingers.value.includes('Bob'));
+
+  // allShowSingers reactive aggregation
+  queue.value = [
+    { id: 'q1', singerName: 'Charlie', title: 'Song 1' },
+    { id: 'q2', singerName: 'Bob', title: 'Song 2' } // Bob already in knownSingers
+  ];
+  currentTrack.value = { singerName: 'Diana', title: 'Live Song' };
+
+  const allSingers = allShowSingers.value;
+  assert.ok(allSingers.includes('Bob'));
+  assert.ok(allSingers.includes('Charlie'));
+  assert.ok(allSingers.includes('Diana'));
+  // Should not contain duplicate Bob
+  assert.equal(allSingers.filter(s => s.toLowerCase() === 'bob').length, 1);
+
+  // Cleanup
+  clearKnownSingers();
+  queue.value = [];
+  currentTrack.value = null;
 });

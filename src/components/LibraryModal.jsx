@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'preact/hooks';
 import { libraryStore } from '../engine/library/library-store.js';
+import { allShowSingers, addKnownSinger } from '../state/player-state.js';
+import { AssignSingerModal } from './AssignSingerModal.jsx';
 import {
   searchYouTubeKaraoke,
   extractYouTubeVideoId,
@@ -23,6 +25,10 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
   const [apiKeyInput, setApiKeyInput] = useState(getYouTubeApiKey());
   const [endpointInput, setEndpointInput] = useState(getCustomSearchEndpoint());
   const [searchFeedback, setSearchFeedback] = useState('');
+
+  // Singer Assignment & Modal state
+  const [selectedSinger, setSelectedSinger] = useState('');
+  const [pendingTrack, setPendingTrack] = useState(null); // { track, action: 'queue' | 'play' }
 
   useEffect(() => {
     const unsubscribe = libraryStore.subscribe((store) => {
@@ -279,6 +285,84 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
           </div>
         )}
 
+        {/* Singer Selection Bar */}
+        <div style={{
+          padding: '10px 24px',
+          background: 'rgba(255, 42, 95, 0.04)',
+          borderBottom: '1px solid var(--border-subtle)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '10px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', flex: 1 }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--neon-coral)' }}>
+              🎤 Singer:
+            </span>
+            <input
+              type="text"
+              placeholder="Pick or type singer name..."
+              value={selectedSinger}
+              onInput={(e) => setSelectedSinger(e.target.value)}
+              style={{
+                height: '30px',
+                background: 'rgba(9, 10, 15, 0.7)',
+                border: '1px solid var(--border-medium)',
+                borderRadius: '6px',
+                padding: '0 10px',
+                color: '#fff',
+                fontSize: '12px',
+                fontWeight: 600,
+                width: '180px'
+              }}
+            />
+            {allShowSingers.value.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Quick set:</span>
+                {allShowSingers.value.slice(0, 5).map(s => {
+                  const isSel = selectedSinger.trim().toLowerCase() === s.toLowerCase();
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSelectedSinger(s)}
+                      style={{
+                        height: '24px',
+                        padding: '0 8px',
+                        borderRadius: '4px',
+                        background: isSel ? 'rgba(255, 42, 95, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                        border: isSel ? '1px solid var(--neon-coral)' : '1px solid var(--border-subtle)',
+                        color: isSel ? '#fff' : 'var(--text-main)',
+                        fontSize: '11px',
+                        fontWeight: isSel ? 700 : 500,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      👤 {s}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          {selectedSinger.trim() && (
+            <button
+              type="button"
+              onClick={() => setSelectedSinger('')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-muted)',
+                fontSize: '11px',
+                cursor: 'pointer'
+              }}
+            >
+              Clear Singer
+            </button>
+          )}
+        </div>
+
         {/* Search Input Bar */}
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border-subtle)' }}>
           <form onSubmit={activeTab === 'youtube' ? handleYouTubeSearch : (e) => e.preventDefault()} style={{
@@ -376,6 +460,32 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
                     <div style={{ fontSize: '13px', marginTop: '4px' }}>
                       Can't find it locally? Switch to the <strong>🔴 YouTube Karaoke</strong> tab above!
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setPendingTrack({
+                        track: {
+                          title: searchQuery,
+                          artist: 'Custom Request',
+                          source: 'request',
+                          type: 'request'
+                        },
+                        action: 'queue'
+                      })}
+                      style={{
+                        marginTop: '12px',
+                        height: '32px',
+                        padding: '0 14px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: 'rgba(255, 255, 255, 0.08)',
+                        border: '1px solid var(--border-medium)',
+                        color: '#fff',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      + Add "{searchQuery}" as Custom Singer Request
+                    </button>
                   </>
                 )}
               </div>
@@ -405,10 +515,7 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '16px' }}>
                       <button
-                        onClick={() => {
-                          onQueueTrack(track);
-                          onClose();
-                        }}
+                        onClick={() => setPendingTrack({ track, action: 'queue' })}
                         style={{
                           height: '32px',
                           padding: '0 12px',
@@ -422,10 +529,7 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
                         + Queue
                       </button>
                       <button
-                        onClick={() => {
-                          onSelectTrack(track);
-                          onClose();
-                        }}
+                        onClick={() => setPendingTrack({ track, action: 'play' })}
                         style={{
                           height: '32px',
                           padding: '0 14px',
@@ -538,10 +642,7 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <button
-                        onClick={() => {
-                          onQueueTrack(item);
-                          onClose();
-                        }}
+                        onClick={() => setPendingTrack({ track: item, action: 'queue' })}
                         style={{
                           height: '32px',
                           padding: '0 12px',
@@ -555,10 +656,7 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
                         + Queue
                       </button>
                       <button
-                        onClick={() => {
-                          onSelectTrack(item);
-                          onClose();
-                        }}
+                        onClick={() => setPendingTrack({ track: item, action: 'play' })}
                         style={{
                           height: '32px',
                           padding: '0 14px',
@@ -579,6 +677,29 @@ export function LibraryModal({ isOpen, onClose, onSelectTrack, onQueueTrack }) {
           )}
         </div>
       </div>
+
+      {/* Assign Singer Dialog */}
+      {pendingTrack && (
+        <AssignSingerModal
+          isOpen={Boolean(pendingTrack)}
+          track={pendingTrack.track}
+          initialAction={pendingTrack.action}
+          defaultSinger={selectedSinger}
+          onClose={() => setPendingTrack(null)}
+          onConfirm={(track, singerName, semitones, chosenAction) => {
+            const finalSinger = singerName || 'Singer';
+            addKnownSinger(finalSinger);
+            setSelectedSinger(finalSinger);
+            setPendingTrack(null);
+            if (chosenAction === 'play') {
+              onSelectTrack(track, finalSinger, semitones);
+            } else {
+              onQueueTrack(track, finalSinger, semitones);
+            }
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 }

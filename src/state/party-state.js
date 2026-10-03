@@ -1,6 +1,6 @@
 import { signal } from '@preact/signals';
 import { PartyHost } from '../engine/party/party-host.js';
-import { queue, currentTrack } from './player-state.js';
+import { queue, currentTrack, addKnownSinger } from './player-state.js';
 import { libraryStore } from '../engine/library/library-store.js';
 import { soundPads } from '../engine/sfx/sound-pads.js';
 
@@ -31,6 +31,9 @@ export async function startPartyHost(preferredCode = null, customTransport = nul
     transport: customTransport,
     brokerId,
     onAddSong: (song) => {
+      if (song.singer) {
+        addKnownSinger(song.singer);
+      }
       const newItem = {
         id: song.id || `party_${Date.now()}`,
         requestId: song.requestId || null,

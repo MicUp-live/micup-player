@@ -19,7 +19,8 @@ import {
   upNextSinger,
   autoApplause,
   isSecondScreenConnected,
-  audioOutputTarget
+  audioOutputTarget,
+  addKnownSinger
 } from './state/player-state.js';
 
 import { isPartyActive, partyRoomCode, partyBroker, partySessionId, broadcastCurrentPartyQueue, startPartyHost } from './state/party-state.js';
@@ -842,12 +843,18 @@ export function App() {
       <LibraryModal
         isOpen={isLibraryOpen}
         onClose={() => setIsLibraryOpen(false)}
-        onSelectTrack={(track) => playTrack(track)}
-        onQueueTrack={(track) => {
+        onSelectTrack={(track, singerName, targetSemitones = 0) => {
+          const finalSinger = (singerName && singerName.trim()) || 'Host Selection';
+          addKnownSinger(finalSinger);
+          playTrack(track, finalSinger, targetSemitones);
+        }}
+        onQueueTrack={(track, singerName, targetSemitones = 0) => {
+          const finalSinger = (singerName && singerName.trim()) || 'Host Selection';
+          addKnownSinger(finalSinger);
           queue.value = [
             ...queue.value,
             normalizeQueueItem({
-              singerName: 'Host Selection',
+              singerName: finalSinger,
               title: track.title,
               artist: track.artist || track.channel || 'Unknown Artist',
               code: track.code || '',
@@ -856,6 +863,7 @@ export function App() {
               file: track.file || null,
               videoId: track.videoId || null,
               youtubeId: track.videoId || null,
+              semitones: targetSemitones || 0,
               trackMatch: track
             })
           ];

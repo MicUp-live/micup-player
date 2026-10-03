@@ -1,4 +1,5 @@
-import { queue, upNextSinger, activeQueueItemId } from '../state/player-state.js';
+import { useState } from 'preact/hooks';
+import { queue, upNextSinger, activeQueueItemId, addKnownSinger } from '../state/player-state.js';
 import { isPlayableYouTube } from '../engine/model/track-model.js';
 
 function isYouTubeItem(item) {
@@ -8,6 +9,19 @@ function isYouTubeItem(item) {
 export function QueuePanel({ onStartSong, onAddFromLibrary }) {
   const upNext = upNextSinger.value;
   const queueList = queue.value;
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [editName, setEditName] = useState('');
+
+  const handleSaveSinger = (index, newName) => {
+    const trimmed = newName.trim();
+    if (trimmed && queue.value[index]) {
+      addKnownSinger(trimmed);
+      const items = [...queue.value];
+      items[index] = { ...items[index], singerName: trimmed };
+      queue.value = items;
+    }
+    setEditingIndex(null);
+  };
 
   const handleMoveUp = (index) => {
     if (index === 0) return;
@@ -187,9 +201,58 @@ export function QueuePanel({ onStartSong, onAddFromLibrary }) {
                 {/* Singer & Song Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {item.singerName}
-                    </span>
+                    {editingIndex === index ? (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          handleSaveSinger(index, editName);
+                        }}
+                        style={{ display: 'inline-flex', alignItems: 'center' }}
+                      >
+                        <input
+                          type="text"
+                          value={editName}
+                          onInput={(e) => setEditName(e.target.value)}
+                          onBlur={() => handleSaveSinger(index, editName)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') setEditingIndex(null);
+                          }}
+                          style={{
+                            height: '22px',
+                            padding: '0 6px',
+                            background: 'rgba(0, 0, 0, 0.8)',
+                            border: '1px solid var(--neon-coral)',
+                            borderRadius: '4px',
+                            color: '#fff',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            outline: 'none',
+                            width: '120px'
+                          }}
+                          autoFocus
+                        />
+                      </form>
+                    ) : (
+                      <span
+                        onClick={() => {
+                          setEditingIndex(index);
+                          setEditName(item.singerName);
+                        }}
+                        title="Click to rename singer"
+                        style={{
+                          fontSize: '13px',
+                          fontWeight: 700,
+                          color: '#fff',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          cursor: 'pointer',
+                          borderBottom: '1px dotted rgba(255, 255, 255, 0.3)'
+                        }}
+                      >
+                        {item.singerName}
+                      </span>
+                    )}
                     {isPerforming && (
                       <span className="badge badge-coral" style={{ fontSize: '9px', padding: '1px 5px', gap: '4px' }}>
                         <span className="pulse-dot" style={{ width: '4px', height: '4px' }} />

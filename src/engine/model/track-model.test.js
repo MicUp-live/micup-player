@@ -227,4 +227,25 @@ describe('Track Model & Queue Request Management', () => {
     assert.ok(match2);
     assert.equal(match2.title, 'We Are The Champions');
   });
+
+  it('preserves singerName and semitones key shift during queue normalization', () => {
+    const item = normalizeQueueItem({
+      title: 'Don\'t Stop Believin\'',
+      artist: 'Journey',
+      singerName: 'Elena Rostova',
+      semitones: -2
+    });
+    assert.equal(item.singerName, 'Elena Rostova');
+    assert.equal(item.semitones, -2);
+
+    // singer property fallback
+    const item2 = normalizeQueueItem({
+      title: 'Sweet Caroline',
+      artist: 'Neil Diamond',
+      singer: 'Marcus',
+      preferredKey: 3
+    });
+    assert.equal(item2.singerName, 'Marcus');
+    assert.equal(item2.semitones, 3);
+  });
 });
